@@ -102,6 +102,14 @@ def main() -> int:
     print(f"https://colab.research.google.com/github/{repo_slug()}/blob/{branch}/{rel}")
     print("\nOpen it, then File -> Save a copy in Drive to get an editable copy")
     print("that survives runtime shutdowns (MyDrive/Colab Notebooks/).")
+
+    if "/" in branch:
+        print(
+            f"\nNote: '{branch}' contains a slash, which makes the branch and the\n"
+            "path ambiguous in a /blob/ URL. If Colab says it can't find the\n"
+            "notebook, use File -> Open notebook -> GitHub and pick the branch\n"
+            "from the dropdown, or merge to main and re-run this."
+        )
     return 0
 
 

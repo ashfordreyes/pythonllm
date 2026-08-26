@@ -98,7 +98,10 @@ https://colab.research.google.com/github/ashfordreyes/pythonllm/blob/main/notebo
 ```
 
 The equivalent UI route is File -> Open notebook -> **GitHub** tab -> paste
-`ashfordreyes/pythonllm`.
+`ashfordreyes/pythonllm`. Use that route for a branch whose name contains a
+slash (like `claude/...`): a `/blob/` URL can't tell where such a branch name
+ends and the path begins, but the dropdown can. `colab_link.py` warns you
+when that applies.
 
 **This view is a render of the pushed file, and your edits are not saved
 anywhere.** Do `File -> Save a copy in Drive` immediately. That copy lands in
