@@ -6,14 +6,33 @@ notebook QLoRA fine-tunes `Qwen2.5-7B-Instruct` on the 50
 `data/stage1_planner/englishtopseudo.jsonl`, after registering the DSL
 special tokens (`<PLAN>`, `</PLAN>`, `<STEP>`) from `src/dsl/schema.py`.
 
-Read top to bottom the first time: §1-6 are setup, §7 the run itself, §8
-how to avoid burning compute units on idle connected time, §9-11
-troubleshooting and what comes after.
+Read top to bottom the first time: §1-3 are free (no runtime, no compute
+units), §4-7 are setup on a connected runtime, §8 the run itself, §9 how to
+avoid burning compute units on idle connected time, §10-12 troubleshooting
+and what comes after.
+
+## Do this before you connect to a runtime
+
+Compute units are billed on GPU-connected wall time, so everything that can
+happen off a runtime should. None of these cost anything:
+
+- [ ] Run `python scripts/check_data.py` locally (§1).
+- [ ] Run `python scripts/colab_link.py` and open the link it prints (§2).
+- [ ] `File -> Save a copy in Drive` so your copy is durable (§2).
+- [ ] Edit the section 2 config cell — `OUTPUT_DIR`, epochs, batch size
+      (§4, §7). Colab lets you edit cell source with no runtime attached;
+      only *running* needs one.
+- [ ] Create `pythonllm_checkpoints/` in your Drive at
+      [drive.google.com](https://drive.google.com) (§4).
+- [ ] Decide A100 vs L4 (§3) — but don't change the runtime type yet.
+      Choosing the type is what connects you.
+
+Only then: Runtime -> Change runtime type -> GPU, and work down §3 onward.
 
 ## How to use the code blocks here
 
 **Every fenced block is one Colab cell — one block, one cell.** Don't merge
-them: Colab reports errors per cell, and most recovery advice in §9 is
+them: Colab reports errors per cell, and most recovery advice in §10 is
 "re-run that one cell".
 
 Each block is labelled:
@@ -29,12 +48,12 @@ cells are in, the top should read:
 
 | Order | Cell | From |
 | --- | --- | --- |
-| 1 | `!nvidia-smi` | New — §2 |
-| 2 | `torch.cuda` check | New — §2 |
-| 3 | `drive.mount(...)` | New — §3 |
-| 4 | `!git clone ...` | New — §4 (skip if you upload instead) |
-| 5 | `!ls` / `!wc -l` check | New — §4 |
-| 6 | `login()` | New — §5, **optional** |
+| 1 | `!nvidia-smi` | New — §3 |
+| 2 | `torch.cuda` check | New — §3 |
+| 3 | `drive.mount(...)` | New — §4 |
+| 4 | `!git clone ...` | New — §5 |
+| 5 | `!ls` / `!wc -l` check | New — §5 |
+| 6 | `login()` | New — §6, **optional** |
 | 7 | `!pip install ...` | Notebook, section 1 |
 | 8+ | config, tokenizer, model, LoRA, data, train, save | Notebook, sections 2-10 |
 
@@ -48,17 +67,78 @@ Runtime -> Run all.
 
 ## 1. Before you start
 
-- A Google account with Colab Pro or Pay As You Go credits (see §2).
-- The repo on GitHub, or the two files from §4 on your local machine.
+- A Google account with Colab Pro or Pay As You Go credits (see §3).
 - ~20GB free runtime disk for the base model (the 7B safetensors are ~15GB;
   the *download* is fp16/bf16, only the in-memory weights are 4-bit).
 - Run `python scripts/check_data.py` locally first. It checks both JSONL
   files parse, that stage1/stage2 line up 1:1, and that every plan passes
   `src/dsl/validator.py`. Cheaper to fix here than after a model download.
+  Expect `OK: 50 pairs in englishtopseudo.jsonl, ...`.
 
-## 2. GPU
+## 2. Open the notebook in Colab
 
-Runtime -> Change runtime type -> Hardware accelerator: **GPU**.
+No runtime needed for any of this. `ashfordreyes/pythonllm` is a **public**
+repo, so Colab can fetch the notebook itself — nothing to upload, no token.
+
+**Option A — open from GitHub (recommended).** Run this locally:
+
+```
+python scripts/colab_link.py
+```
+
+It prints a `colab.research.google.com/github/...` link for the notebook on
+your current branch, after checking the notebook is well-formed and that the
+commit Colab will read is actually pushed. Pass a path to link a different
+notebook (`python scripts/colab_link.py notebooks/04_eval_pipeline.ipynb`).
+
+For `main` the link is always:
+
+```
+https://colab.research.google.com/github/ashfordreyes/pythonllm/blob/main/notebooks/02_stage1_finetune.ipynb
+```
+
+The equivalent UI route is File -> Open notebook -> **GitHub** tab -> paste
+`ashfordreyes/pythonllm`. Use that route for a branch whose name contains a
+slash (like `claude/...`): a `/blob/` URL can't tell where such a branch name
+ends and the path begins, but the dropdown can. `colab_link.py` warns you
+when that applies.
+
+**This view is a render of the pushed file, and your edits are not saved
+anywhere.** Do `File -> Save a copy in Drive` immediately. That copy lands in
+`MyDrive/Colab Notebooks/` and autosaves from then on — see §4.
+
+**Option B — File -> Upload notebook.** Use this when you have local notebook
+edits you haven't pushed. Colab stores the uploaded copy in
+`MyDrive/Colab Notebooks/` straight away, so it's durable without the extra
+save step. The tradeoff is that it's now a fork: changes you make there don't
+come back to the repo unless you download it and commit it.
+
+**Option C — dragging the `.ipynb` into the left sidebar. Don't.** See below.
+
+### If the cells come up empty
+
+The left sidebar (folder icon) is a **file manager for the runtime's disk**,
+not a way to open a notebook. Dropping a `.ipynb` there copies bytes into
+`/content` on a connected machine; it does not load that file into the
+editor you're looking at. So you get exactly the symptom of an upload that
+"worked" — the file is visibly there in the sidebar — while the notebook on
+screen is a different, empty one. It also requires a runtime to accept the
+drop, and the file is deleted when that runtime goes away.
+
+Use Option A or B instead. Both open the notebook *as* a notebook.
+
+Separately: this notebook declared `nbformat_minor: 5` while none of its 23
+cells carried the `id` field that format requires. That was a real schema
+violation — fixed on this branch — and strict readers are entitled to drop
+content from a file like that. `scripts/colab_link.py` now checks for both
+that and empty cell sources before handing you a link, so the same class of
+problem fails locally instead of after you've spun up a GPU.
+
+## 3. GPU
+
+Runtime -> Change runtime type -> Hardware accelerator: **GPU**. This is the
+step that starts billing, so make sure the "Do this before you connect"
+checklist above is done first.
 
 - **A100** (40GB, Pro+/PAYG) — fastest. The 4-bit model needs ~6-8GB for
   weights plus activations, gradients and optimizer state, so this has
@@ -91,12 +171,21 @@ print(torch.cuda.is_bf16_supported())  # must be True for bf16=True
 Both are cheap to re-run any time — the fastest check that you didn't
 silently get a different GPU after a reconnect.
 
-## 3. Google Drive — what survives a runtime shutdown
+## 4. What persists, and mounting Drive
 
-**Nothing in the runtime persists.** When the session ends, disconnects, or
-is reclaimed for idling, the whole disk goes: your clone, uploaded files,
-the model cache, and every checkpoint under `OUTPUT_DIR`. Google Drive is
-the only durable storage Colab gives you, and mounting it is one cell.
+Colab stores things in three places, and only two of them outlive the
+session:
+
+| What | Lives on | Survives disconnect |
+| --- | --- | --- |
+| Notebook opened via the GitHub link (§2A) | GitHub, rendered read-only | Yes — but **your edits are not saved** until you Save a copy in Drive |
+| Notebook uploaded or saved to Drive (§2B) | `MyDrive/Colab Notebooks/` | Yes, autosaved as you type |
+| Anything under `/content` — your clone, sidebar uploads, the HF cache, `OUTPUT_DIR` checkpoints | runtime disk | **No.** All of it is destroyed |
+| Anything under `/content/drive/MyDrive` | Google Drive | Yes |
+
+So: **nothing in the runtime persists.** When the session ends, disconnects,
+or is reclaimed for idling, the whole disk goes. Google Drive is the only
+durable storage Colab gives you, and mounting it is one cell.
 
 **New cell — below the two GPU checks:**
 
@@ -115,7 +204,9 @@ things at Drive *before* they write anything:
 
 - **Trained adapter.** The notebook's section 9 copies it to
   `MyDrive/pythonllm_checkpoints/stage1_planner/`. This is the one thing
-  you must not lose.
+  you must not lose. You can create that folder from
+  [drive.google.com](https://drive.google.com) before you ever connect —
+  the copy works either way, but it's one less thing to go wrong.
 - **Mid-training checkpoints.** `save_strategy="epoch"` writes under
   `OUTPUT_DIR`, which is runtime-local by default. If you expect
   interruptions, set it in the notebook's section 2 config cell to
@@ -130,13 +221,15 @@ things at Drive *before* they write anything:
   your Colab downloads — often they aren't, and 15GB is a big bite out of a
   15GB free tier. Skip this unless downloads are your bottleneck.
 
-Code is the exception: it lives in git, so re-cloning (§4) is the simplest
+Code is the exception: it lives in git, so re-cloning (§5) is the simplest
 way to restore it. Don't work out of a Drive copy of the repo.
 
-## 4. Get the repo files into the runtime
+## 5. Get the repo files into the runtime
 
-The notebook expects the repo at `/content/pythonllm/`, because its section
-2 config uses these relative paths.
+Opening the notebook (§2) does *not* bring the repo with it — the notebook
+reads the dataset and `schema.py` off the runtime's disk, so you still need
+the files there. It expects the repo at `/content/pythonllm/`, because its
+section 2 config uses these relative paths.
 
 **Already in the notebook** (section 2), quoted so you can match them:
 
@@ -149,35 +242,25 @@ Section 3 also does `sys.path.insert(0, "pythonllm/src")` before
 `from dsl.schema import SPECIAL_TOKENS`. Put files elsewhere and you must
 edit all three lines.
 
-**Option A — clone (recommended). New cell**, below the Drive mount. Use
-*one* of these two variants:
+**Clone it. New cell**, below the Drive mount. The repo is public, so this is
+the whole thing:
 
 ```python
-!git clone https://github.com/<your-username>/pythonllm.git
+!git clone https://github.com/ashfordreyes/pythonllm.git
 ```
 
-For a private repo, use this instead — same position, same single cell. A
-fine-grained token with read-only Contents access is enough:
+Add `-b <branch>` if the data you want isn't on `main` yet. If the repo is
+ever made private, swap in a fine-grained token with read-only Contents
+access — same position, same single cell:
 
 ```python
 import getpass
 token = getpass.getpass("GitHub token: ")   # keeps it out of saved cell source
-!git clone https://{token}@github.com/<your-username>/pythonllm.git
+!git clone https://{token}@github.com/ashfordreyes/pythonllm.git
 ```
 
 Keep `getpass` and the clone in one cell so `token` is still in scope. Never
 hardcode a token in a cell — notebook source and output are saved to Drive.
-
-**Option B — upload the two files.** No cell; done in the Colab UI. In the
-file browser (left sidebar, folder icon):
-
-1. Create `pythonllm/data/stage1_planner/` and `pythonllm/src/dsl/`.
-2. Drag `englishtopseudo.jsonl` into the first.
-3. Drag `schema.py` and `__init__.py` into the second (`__init__.py` is what
-   makes the import work).
-
-Uploads are lost on disconnect just like clones, so Option A is less
-painful to redo.
 
 Either way, verify. **New cell**, immediately below:
 
@@ -188,7 +271,7 @@ Either way, verify. **New cell**, immediately below:
 
 If this errors or prints anything but 50, stop and fix the checkout.
 
-## 5. Hugging Face access
+## 6. Hugging Face access
 
 Qwen2.5-7B-Instruct is public and ungated, so normally you add no cell here.
 
@@ -202,9 +285,9 @@ login()  # paste a token from https://huggingface.co/settings/tokens
 
 Paste into the widget in the cell *output*, not the source. The download
 lands in `~/.cache/huggingface` and is re-fetched each session unless you
-set `HF_HOME` (§3) — budget a few minutes.
+set `HF_HOME` (§4) — budget a few minutes.
 
-## 6. Config and dependencies
+## 7. Config and dependencies
 
 **Already in the notebook** — its section 1 cell. Run it, don't re-add it:
 
@@ -218,12 +301,14 @@ If pip reports it upgraded an already-imported package (usually
 otherwise you get version-mismatch errors later.
 
 The knobs live in the notebook's section 2 config cell. Edit in place and
-re-run that cell plus everything downstream.
+re-run that cell plus everything downstream — and prefer to edit them before
+you connect (the checklist at the top), since editing costs nothing and a
+re-run costs units.
 
 | Setting | Value | Notes |
 | --- | --- | --- |
 | `BASE_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | Instruction-tuned, so the chat template in section 6 is meaningful. |
-| `OUTPUT_DIR` | `stage1_planner_qlora` | Runtime-local; see §3 to put it on Drive. |
+| `OUTPUT_DIR` | `stage1_planner_qlora` | Runtime-local; see §4 to put it on Drive. |
 | `MAX_SEQ_LEN` | 512 | Prompt + plan, truncated. Raise if you add long plans. |
 | `NUM_EPOCHS` | 15 | High on purpose — 50 examples is a proof of concept. |
 | `LEARNING_RATE` | 2e-4 | Standard LoRA range (1e-4 to 3e-4). |
@@ -242,7 +327,7 @@ Two details most likely to break if you edit the notebook:
   pseudocode and EOS, then sets prompt labels to `-100` so only the plan
   contributes to the loss.
 
-## 7. Run it
+## 8. Run it
 
 Runtime -> Run all, or Shift+Enter down. Section numbers below are the
 notebook's. Checkpoints to eyeball:
@@ -252,44 +337,44 @@ notebook's. Checkpoints to eyeball:
 - Section 5 prints ~40M trainable of ~7.6B (well under 1%).
 - Section 6 prints the dataset and first row; confirm `english` and
   `pseudocode` keys.
-- Section 7 logs loss every step. It should fall; see §9 if not.
-- Section 9 mounts Drive (already done if you did §3) and copies the
+- Section 7 logs loss every step. It should fall; see §10 if not.
+- Section 9 mounts Drive (already done if you did §4) and copies the
   adapter to `MyDrive/pythonllm_checkpoints/stage1_planner/`.
 - Section 10 generates a plan for one held-in example. It decodes with
   `skip_special_tokens=False`, so you should literally see `<PLAN>`,
   `<STEP>`, `</PLAN>`.
 
-**Do not skip section 9** — see §3. Keep the tab open and interact
+**Do not skip section 9** — see §4. Keep the tab open and interact
 occasionally during the run; idle sessions get reclaimed. Once section 10
-finishes, disconnect rather than leaving it connected — see §8.
+finishes, disconnect rather than leaving it connected — see §9.
 
 Rough timings for the 50-example dataset: install 1-2 min, model download
 3-10 min, training (15 epochs, ~45 steps) a few minutes on A100/L4, sanity
 check seconds. Well under an hour, mostly download.
 
-## 8. Minimizing connected time to save compute units
+## 9. Minimizing connected time to save compute units
 
 Compute units are spent on GPU-connected wall time, not just active
 training — an idle-but-connected runtime still burns them, and closing the
 browser tab doesn't disconnect it (Colab keeps the runtime alive in the
-background for a while, still billing). Given the timings in §7 (well
+background for a while, still billing). Given the timings in §8 (well
 under an hour, mostly the download), the highest-leverage moves are:
 
-- **Do everything that doesn't need a GPU before connecting.** Run
-  `python scripts/check_data.py` locally (§1) and edit the notebook's
-  config cell (§6) before you even open Runtime -> Change runtime type.
-  Fixing a bad JSONL line after you've already spun up an A100 wastes
-  the whole download+install time on a run that was going to fail anyway.
-- **Cache the model on Drive** (§3's `HF_HOME` tip) if you'll re-run this
+- **Do everything that doesn't need a GPU before connecting** — the
+  checklist at the top of this file. Fixing a bad JSONL line, or discovering
+  the notebook never opened properly, after you've already spun up an A100
+  wastes the whole download+install time on a run that was going to fail
+  anyway.
+- **Cache the model on Drive** (§4's `HF_HOME` tip) if you'll re-run this
   notebook across multiple sessions — the 3-10 min download is the biggest
-  single chunk of connected time in §7's timings, and skipping it on every
+  single chunk of connected time in §8's timings, and skipping it on every
   session after the first adds up fast.
-- **Point `OUTPUT_DIR` at Drive** (§3) so you don't have to keep the
+- **Point `OUTPUT_DIR` at Drive** (§4) so you don't have to keep the
   runtime connected "just in case" — you can disconnect immediately after
   a checkpoint lands and resume later with
   `trainer.train(resume_from_checkpoint=True)` instead of babysitting a
   connected session.
-- **Disconnect as soon as §7's section 9 finishes**, don't leave the tab
+- **Disconnect as soon as §8's section 9 finishes**, don't leave the tab
   open out of habit. Runtime -> Disconnect and delete runtime (not just
   closing the tab) actually frees the GPU. A one-line cell at the very end
   automates this:
@@ -301,13 +386,21 @@ under an hour, mostly the download), the highest-leverage moves are:
 
   Add it as the last cell, after section 10's sanity check, so it only
   fires once the adapter is safely on Drive.
-- **Avoid avoidable restarts.** Each `bitsandbytes`/CUDA error in §9 costs
+- **Avoid avoidable restarts.** Each `bitsandbytes`/CUDA error in §10 costs
   a full runtime restart and (if `HF_HOME` isn't on Drive) a re-download.
-  Running the §2 GPU checks and confirming the pip install didn't upgrade
+  Running the §3 GPU checks and confirming the pip install didn't upgrade
   an already-imported package before doing anything else catches most of
   these before they cost you a restart mid-run.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
+
+**Cells look empty after uploading the notebook.** See §2 — you almost
+certainly dropped the file into the sidebar file browser instead of opening
+it. Open it via `python scripts/colab_link.py` or File -> Upload notebook.
+
+**Edits to the notebook vanished between sessions.** You were working in the
+read-only GitHub view (§2A) and never did File -> Save a copy in Drive. §4
+has the full persistence table.
 
 **CUDA out of memory.** Lower `PER_DEVICE_BATCH_SIZE` to 2 or 1 and raise
 `GRAD_ACCUM_STEPS` to keep the effective batch at 16; lower `MAX_SEQ_LEN`;
@@ -317,7 +410,7 @@ pinned.
 
 **Loss flat or `nan`.** Check `labels` aren't entirely `-100`, meaning the
 example got fully masked (usually a chat template change pushing the prompt
-past `MAX_SEQ_LEN`). `nan` usually means bf16 isn't really supported — §2.
+past `MAX_SEQ_LEN`). `nan` usually means bf16 isn't really supported — §3.
 
 **Scratch cell** — below the section 6 formatting cell (it needs
 `tokenized_dataset` and `tokenizer`). Run, then delete:
@@ -339,9 +432,9 @@ saves both to `FINAL_DIR`), not a fresh one from the hub.
 
 **Disconnected mid-training.** Just re-run — it's short. Checkpoints under a
 runtime-local `OUTPUT_DIR` are gone with the runtime; point it at Drive
-(§3) if you expect interruptions.
+(§4) if you expect interruptions.
 
-## 10. Reusing the adapter later
+## 11. Reusing the adapter later
 
 The saved directory is a LoRA adapter plus tokenizer, not a full model, so
 reload the base and attach it.
@@ -350,7 +443,7 @@ This is **not** a cell for `02_stage1_finetune.ipynb` — it goes at the top
 of whatever consumes the adapter (`03_stage2_finetune`, `04_eval_pipeline`,
 or a fresh session of this one). It assumes `BASE_MODEL` and `bnb_config`
 exist there; if not, copy those definitions from the notebook's sections 2
-and 4 into the same cell first. Mount Drive (§3) before running it.
+and 4 into the same cell first. Mount Drive (§4) before running it.
 
 ```python
 from peft import PeftModel
@@ -368,7 +461,7 @@ model.eval()
 The resize is required — the adapter was trained against the enlarged
 embedding matrix and won't load onto the stock vocab size.
 
-## 11. Next steps
+## 12. Next steps
 
 With an adapter in Drive, download it or point `03_stage2_finetune.ipynb` /
 `04_eval_pipeline.ipynb` at the same Drive path to keep working across
