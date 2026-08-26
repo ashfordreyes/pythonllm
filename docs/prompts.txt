@@ -35,3 +35,6 @@ I am going to need you to expand and add details to the instructions in colab se
 
 2026-08-26T22:55:12Z [claude-code-terminal]
 Update colab_setup.md to say WHICH code blocks get added to a cell, if its their own cell or just add it to one big cell, etc. Expand a bit more on the details that way.
+2026-08-26T23:00:21Z [claude-code-terminal]
+Is it possible for you to tighten up how many words are used in colab_setup.md while maintaining the easy understanding? Does it also explain how to setup google drive so certain things can persist between runtimes turning off and on?
+
