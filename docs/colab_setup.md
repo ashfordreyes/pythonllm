@@ -6,13 +6,14 @@ notebook QLoRA fine-tunes `Qwen2.5-7B-Instruct` on the 50
 `data/stage1_planner/englishtopseudo.jsonl`, after registering the DSL
 special tokens (`<PLAN>`, `</PLAN>`, `<STEP>`) from `src/dsl/schema.py`.
 
-Read top to bottom the first time: §1-6 are setup, §7 the run itself,
-§8-10 troubleshooting and what comes after.
+Read top to bottom the first time: §1-6 are setup, §7 the run itself, §8
+how to avoid burning compute units on idle connected time, §9-11
+troubleshooting and what comes after.
 
 ## How to use the code blocks here
 
 **Every fenced block is one Colab cell — one block, one cell.** Don't merge
-them: Colab reports errors per cell, and most recovery advice in §8 is
+them: Colab reports errors per cell, and most recovery advice in §9 is
 "re-run that one cell".
 
 Each block is labelled:
@@ -251,7 +252,7 @@ notebook's. Checkpoints to eyeball:
 - Section 5 prints ~40M trainable of ~7.6B (well under 1%).
 - Section 6 prints the dataset and first row; confirm `english` and
   `pseudocode` keys.
-- Section 7 logs loss every step. It should fall; see §8 if not.
+- Section 7 logs loss every step. It should fall; see §9 if not.
 - Section 9 mounts Drive (already done if you did §3) and copies the
   adapter to `MyDrive/pythonllm_checkpoints/stage1_planner/`.
 - Section 10 generates a plan for one held-in example. It decodes with
@@ -259,13 +260,54 @@ notebook's. Checkpoints to eyeball:
   `<STEP>`, `</PLAN>`.
 
 **Do not skip section 9** — see §3. Keep the tab open and interact
-occasionally; idle sessions get reclaimed.
+occasionally during the run; idle sessions get reclaimed. Once section 10
+finishes, disconnect rather than leaving it connected — see §8.
 
 Rough timings for the 50-example dataset: install 1-2 min, model download
 3-10 min, training (15 epochs, ~45 steps) a few minutes on A100/L4, sanity
 check seconds. Well under an hour, mostly download.
 
-## 8. Troubleshooting
+## 8. Minimizing connected time to save compute units
+
+Compute units are spent on GPU-connected wall time, not just active
+training — an idle-but-connected runtime still burns them, and closing the
+browser tab doesn't disconnect it (Colab keeps the runtime alive in the
+background for a while, still billing). Given the timings in §7 (well
+under an hour, mostly the download), the highest-leverage moves are:
+
+- **Do everything that doesn't need a GPU before connecting.** Run
+  `python scripts/check_data.py` locally (§1) and edit the notebook's
+  config cell (§6) before you even open Runtime -> Change runtime type.
+  Fixing a bad JSONL line after you've already spun up an A100 wastes
+  the whole download+install time on a run that was going to fail anyway.
+- **Cache the model on Drive** (§3's `HF_HOME` tip) if you'll re-run this
+  notebook across multiple sessions — the 3-10 min download is the biggest
+  single chunk of connected time in §7's timings, and skipping it on every
+  session after the first adds up fast.
+- **Point `OUTPUT_DIR` at Drive** (§3) so you don't have to keep the
+  runtime connected "just in case" — you can disconnect immediately after
+  a checkpoint lands and resume later with
+  `trainer.train(resume_from_checkpoint=True)` instead of babysitting a
+  connected session.
+- **Disconnect as soon as §7's section 9 finishes**, don't leave the tab
+  open out of habit. Runtime -> Disconnect and delete runtime (not just
+  closing the tab) actually frees the GPU. A one-line cell at the very end
+  automates this:
+
+  ```python
+  from google.colab import runtime
+  runtime.unassign()
+  ```
+
+  Add it as the last cell, after section 10's sanity check, so it only
+  fires once the adapter is safely on Drive.
+- **Avoid avoidable restarts.** Each `bitsandbytes`/CUDA error in §9 costs
+  a full runtime restart and (if `HF_HOME` isn't on Drive) a re-download.
+  Running the §2 GPU checks and confirming the pip install didn't upgrade
+  an already-imported package before doing anything else catches most of
+  these before they cost you a restart mid-run.
+
+## 9. Troubleshooting
 
 **CUDA out of memory.** Lower `PER_DEVICE_BATCH_SIZE` to 2 or 1 and raise
 `GRAD_ACCUM_STEPS` to keep the effective batch at 16; lower `MAX_SEQ_LEN`;
@@ -299,7 +341,7 @@ saves both to `FINAL_DIR`), not a fresh one from the hub.
 runtime-local `OUTPUT_DIR` are gone with the runtime; point it at Drive
 (§3) if you expect interruptions.
 
-## 9. Reusing the adapter later
+## 10. Reusing the adapter later
 
 The saved directory is a LoRA adapter plus tokenizer, not a full model, so
 reload the base and attach it.
@@ -326,7 +368,7 @@ model.eval()
 The resize is required — the adapter was trained against the enlarged
 embedding matrix and won't load onto the stock vocab size.
 
-## 10. Next steps
+## 11. Next steps
 
 With an adapter in Drive, download it or point `03_stage2_finetune.ipynb` /
 `04_eval_pipeline.ipynb` at the same Drive path to keep working across
