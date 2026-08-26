@@ -18,4 +18,9 @@ now — fill each in as the literature review and dataset design settle:
    (execution-based, DS-1000-style checks) plus `src/dsl/validator.py` for
    plan well-formedness.
 
+To open one in Colab, run `python scripts/colab_link.py [notebook]` — it
+pre-flights the notebook and prints a link that opens it straight from
+GitHub. Setup details for `02_stage1_finetune.ipynb` are in
+`docs/colab_setup.md`.
+
 See the project plan for the full rationale and model/dataset choices.

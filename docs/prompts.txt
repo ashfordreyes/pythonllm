@@ -41,3 +41,6 @@ Is it possible for you to tighten up how many words are used in colab_setup.md w
 2026-08-26T23:09:40Z [claude-code-web]
 Looking at colab_setup.py is there anything I can do to keep the amount of time I am connected to a runtime limited so I can maximise my compute units?
 
+
+2026-08-26T23:16:16Z [claude-code-web]
+One more check up before I start using colab, we will be reviewing and editing colab_setup.md alright? I want to set up everything possible before having to connect to a runtime for terminal access, etc. I want to be able to upload the notebook or have a command that uploads it for me. Except when I uploaded it my first try an hour ago the cells seemed to be empty but the files were there, is there something setting up drive so that necessary files can persist?
