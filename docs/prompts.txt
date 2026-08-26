@@ -27,3 +27,6 @@ Whats the next step? I have english to pseudocode and pseudocode to python. Is i
 2026-08-26T22:16:20Z [claude-code-vscode]
 Is this file up to date and has file paths setup so I can click run and make sure the .jsonl's are correct?
 2026-08-26T22:19:15Z [claude-code-vscode] Write notebooks/02_stage1_finetune.ipynb — QLoRA/PEFT setup on Qwen2.5-7B-Instruct, register the DSL special tokens (<PLAN>, </PLAN>, <STEP>) from schema.py into the tokenizer before training, train on the 50 (english, pseudocode) pairs. Once finished let me know so I can drop the notebooks into colab. Also write detailed instructions for setting up the colab, what gpu to pick, and how to add the .jsonl files and anything else I might need
+
+2026-08-26T22:35:21Z [claude-code-vscode]
+test prompt to see if it works
