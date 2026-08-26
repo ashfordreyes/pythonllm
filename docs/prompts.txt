@@ -1,0 +1,29 @@
+2026-08-26T17:47:00Z [claude-code-terminal]
+Add instructions to CLAUDE.md to write down every single prompt I make, whether in claude on web, claude in vscode, claude code terminal, or another coding agent, so also create agents.md that is told to read claude.md. The file should be called prompts.txt and it should be written to a folder called docs, it should never be gitignored, i want to have all my prompts on every device that I code from.
+
+2026-08-26T17:52:00Z [claude-code-terminal]
+Are small prompts like this one, not just initial prompts logged as well?
+
+2026-08-26T21:48:59Z [claude-code-terminal]
+is your time off? give permission in claude.md to check my computers time and write it in utc
+
+2026-08-26T21:49:26Z [claude-code-terminal]
+test prompt to see if prompts.txt works
+2026-08-26T21:50:25Z [claude-code-vscode] How many more examples do I need to make? Can I just make up prompts I want or is there a point of diminishing returns, since this is a training dataset for the planner model correct?
+
+2026-08-26T21:58:19Z [claude-code-vscode]
+Based on what I have so far, can you generate examples? I don't even know what to write anymore, is any prompt too ambitious? The issue is whatever model I'll be finetuning for planning and then coding aren't agentic right? The difference between Sonnet 5 or Opus 5 and a 7b parameter model is HUGE in terms of capability. Can I make existing models agentic somehow?
+
+2026-08-26T22:03:32Z [claude-code-vscode]
+Did you? I still see my edits and they haven't been changed. Can you add (remove if necessary) up to 50 prompts that are actually usable for a v1? I can always improve down the line but first I need a basic working planner then coding model.
+
+2026-08-26T22:04:22Z [claude-code-vscode]
+Whats the next step for me?
+
+2026-08-26T22:06:20Z [claude-code-vscode]
+Write the 50 pseudocode → Python pairs into data/stage2_coder/, one JSONL entry per line (matching your (input, output) convention), reusing the exact pseudocode strings from englishtopseudo.jsonl as the input so the two files line up 1:1.
+2026-08-26T22:13:58Z [claude-code-terminal]
+Whats the next step? I have english to pseudocode and pseudocode to python. Is it time to download models and fine tune them in colab?
+2026-08-26T22:16:20Z [claude-code-vscode]
+Is this file up to date and has file paths setup so I can click run and make sure the .jsonl's are correct?
+2026-08-26T22:19:15Z [claude-code-vscode] Write notebooks/02_stage1_finetune.ipynb — QLoRA/PEFT setup on Qwen2.5-7B-Instruct, register the DSL special tokens (<PLAN>, </PLAN>, <STEP>) from schema.py into the tokenizer before training, train on the 50 (english, pseudocode) pairs. Once finished let me know so I can drop the notebooks into colab. Also write detailed instructions for setting up the colab, what gpu to pick, and how to add the .jsonl files and anything else I might need
