@@ -8,7 +8,51 @@ special tokens (`<PLAN>`, `</PLAN>`, `<STEP>`) from `src/dsl/schema.py` into
 the tokenizer.
 
 Read this top to bottom the first time; sections 1-4 are setup, 5-6 are the
-run itself, and 7-9 are troubleshooting and what to do afterwards.
+run itself, and 7-9 are troubleshooting and what to do afterwards. Start
+with the cell conventions immediately below — they tell you which code
+blocks you paste into new cells and which are already in the notebook.
+
+## How to use the code blocks in this document
+
+**Every fenced code block below is one Colab cell — one block, one cell.**
+Do not paste several blocks into a single big cell. Colab reports errors and
+timings per cell, and most of the recovery advice in §8 is "re-run that one
+cell", which only works if each step stands alone.
+
+Each block is labelled with what to do with it:
+
+- **New cell** — you create this cell yourself. The section says exactly
+  where it goes in the notebook (all of them go *above* the notebook's
+  existing `## 1. Install dependencies` cell, in the order given below).
+- **Already in the notebook** — shown here only so you can read what it
+  does. Do **not** paste it again; you would run the step twice.
+- **Scratch cell** — a throwaway diagnostic. The section says which cell it
+  must sit below (it needs variables that cell defined). Run it, then delete
+  it; it is not part of the pipeline.
+
+The notebook ships with 12 code cells (its sections 1-10). By the time you
+are ready to run, the top of your notebook should look like this:
+
+| Order | Cell | Where it comes from |
+| --- | --- | --- |
+| 1 | `!nvidia-smi` | New cell — §1 |
+| 2 | `torch.cuda` check | New cell — §1 |
+| 3 | `!git clone ...` | New cell — §2 (skip if you used the upload option) |
+| 4 | `!ls` / `!wc -l` verification | New cell — §2 |
+| 5 | `login()` | New cell — §3, **optional**, only if you hit rate limits |
+| 6 | `!pip install ...` | Already in the notebook — its section 1 |
+| 7+ | config, tokenizer, model, LoRA, data, train, save | Already in the notebook — its sections 2-10 |
+
+To add these: hover over the gap just above the notebook's `!pip install`
+cell and click **+ Code**, which inserts a cell there. Selecting a cell and
+using the toolbar's **+ Code** inserts *below* it instead — so the simplest
+order is to create cell 1 in that gap, then keep selecting the cell you just
+made and adding below it, working down the list. Drag cells with the handle
+in their toolbar if you get the order wrong.
+
+After the setup cells run clean once, you normally never touch them again in
+that session — the rest of the run is Runtime -> Run all, or top-to-bottom
+Shift+Enter from the install cell.
 
 ## 0. Before you start
 
@@ -41,14 +85,21 @@ Runtime -> Change runtime type -> Hardware accelerator: **GPU**.
   download plus training stops being practical.
 
 Confirm what you actually got before installing anything — Colab silently
-falls back to whatever is free:
+falls back to whatever is free.
+
+**New cell — the first cell of the notebook**, above `## 1. Install
+dependencies`:
 
 ```python
 !nvidia-smi
 ```
 
 You want to see the expected GPU name and ~40GB (A100) or ~23GB (L4) of
-total memory. Also confirm PyTorch sees it:
+total memory.
+
+**New cell — directly below the one above.** Keep it separate: if the
+runtime has no GPU at all, `nvidia-smi` fails loudly on its own and you can
+fix the runtime type before the import cell muddies the output.
 
 ```python
 import torch
@@ -56,11 +107,18 @@ print(torch.cuda.is_available(), torch.cuda.get_device_name(0))
 print(torch.cuda.is_bf16_supported())  # must be True for bf16=True
 ```
 
+Both of these are cheap and safe to re-run at any point in the session —
+they are the fastest way to check you did not silently get a different GPU
+after a reconnect.
+
 ## 2. Get the repo files into the runtime
 
 The notebook expects the repo checked out at `pythonllm/` in the Colab
 working directory (`/content/pythonllm/`), because the config cell in
-section 2 uses these relative paths:
+section 2 uses these relative paths.
+
+**Already in the notebook** (its section 2 config cell) — do not paste this
+anywhere; it is quoted so you can see what the paths must match:
 
 ```python
 DATA_PATH   = "pythonllm/data/stage1_planner/englishtopseudo.jsonl"
@@ -71,14 +129,17 @@ and section 3 does `sys.path.insert(0, "pythonllm/src")` before
 `from dsl.schema import SPECIAL_TOKENS`. If you put the files somewhere
 else, edit those three lines to match rather than fighting the layout.
 
-**Option A — clone (recommended).** Run this in a cell before the rest:
+**Option A — clone (recommended).** **New cell**, below the two GPU-check
+cells and still above `## 1. Install dependencies`. Use *one* of the two
+variants below, not both:
 
 ```python
 !git clone https://github.com/<your-username>/pythonllm.git
 ```
 
-If the repo is private, use a fine-grained GitHub personal access token with
-read-only Contents access:
+If the repo is private, use this variant instead — same position, same
+single cell. A fine-grained GitHub personal access token with read-only
+Contents access is enough:
 
 ```python
 import getpass
@@ -86,11 +147,15 @@ token = getpass.getpass("GitHub token: ")   # avoids pasting it into a saved cel
 !git clone https://{token}@github.com/<your-username>/pythonllm.git
 ```
 
+Keep the `getpass` prompt and the `git clone` in the same cell so `token`
+is still in scope when the clone runs, and so a saved copy of the notebook
+never contains the token.
+
 Do not hardcode the token in a cell you will save or share — the notebook
 output and source are stored in Drive.
 
-**Option B — upload just the needed files.** Only two files are actually
-read by this notebook:
+**Option B — upload just the needed files.** No cell to add — this is done
+in the Colab UI. Only two files are actually read by this notebook:
 
 1. In the Colab file browser (left sidebar, folder icon), create
    `pythonllm/data/stage1_planner/` and `pythonllm/src/dsl/`.
@@ -101,23 +166,34 @@ read by this notebook:
 Note that uploads are lost on disconnect just like clones, so Option A is
 less painful to redo.
 
-Either way, verify before training:
+Either way, verify before training. **New cell**, immediately below the
+clone cell (or, with Option B, directly below the GPU-check cells):
 
 ```python
 !ls pythonllm/data/stage1_planner/ pythonllm/src/dsl/
 !wc -l pythonllm/data/stage1_planner/englishtopseudo.jsonl   # expect 50
 ```
 
+If this cell errors or prints a count other than 50, stop here and fix the
+checkout — every later cell depends on these two paths resolving.
+
 ## 3. Hugging Face access
 
 Qwen2.5-7B-Instruct is a public, ungated model, so no token is required to
-download it. If you hit a rate limit, or want the download attributed to
-your account, log in first:
+download it, and in the normal case you add no cell here at all.
+
+**New cell — optional**, only if you hit a rate limit or want the download
+attributed to your account. Put it last among the setup cells, directly
+above `## 1. Install dependencies`, and run it before the model-loading
+cell in the notebook's section 4:
 
 ```python
 from huggingface_hub import login
 login()  # paste a token from https://huggingface.co/settings/tokens
 ```
+
+`login()` renders an input widget in the cell output — paste the token there
+rather than into the cell source, so it is not saved with the notebook.
 
 The download lands in `~/.cache/huggingface` inside the runtime and is
 re-fetched from scratch on every new session — budget a few minutes for it
@@ -125,7 +201,8 @@ each run.
 
 ## 4. Install dependencies
 
-Section 1 of the notebook installs the stack:
+**Already in the notebook** — this is its section 1 cell, the first cell
+that ships with the notebook. Run it, don't re-add it:
 
 ```python
 !pip install -q -U transformers accelerate peft bitsandbytes datasets trl
@@ -139,7 +216,9 @@ otherwise you get confusing import or version-mismatch errors later.
 
 ## 5. What each config knob does
 
-Section 2 of the notebook:
+These live in the notebook's own section 2 config cell — a single cell you
+edit in place rather than adding new cells for. Change values there and
+re-run that one cell, then re-run the cells downstream of it.
 
 | Setting | Value | Notes |
 | --- | --- | --- |
@@ -167,7 +246,10 @@ you edit the notebook:
 
 ## 6. Run the notebook
 
-Run cells top to bottom. Checkpoints to eyeball as you go:
+With the setup cells in place, run everything top to bottom — Runtime -> Run
+all, or Shift+Enter down the notebook. Section numbers below refer to the
+notebook's own headings, not to this document. Checkpoints to eyeball as you
+go:
 
 - Section 3 prints `Added 3 new special tokens` — if it says 0, the tokens
   were already in the vocab or `SPECIAL_TOKENS` imported empty.
@@ -211,7 +293,11 @@ retrying — re-running a cell after an OOM often leaves memory pinned.
 
 **Loss stays flat / prints `nan`.** Check that `labels` aren't entirely
 `-100`, which means the whole example got masked (usually caused by a chat
-template change making the prompt longer than `MAX_SEQ_LEN`):
+template change making the prompt longer than `MAX_SEQ_LEN`).
+
+**Scratch cell** — add it just below the notebook's section 6 formatting
+cell (it needs `tokenized_dataset` and `tokenizer` to already exist), run
+it, then delete it:
 
 ```python
 row = tokenized_dataset[0]
@@ -238,7 +324,14 @@ be interrupted, point `OUTPUT_DIR` at a mounted Drive path instead.
 ## 9. Using the adapter later
 
 The saved directory is a LoRA adapter plus tokenizer, not a full model, so
-reload the base model the same way and attach it:
+reload the base model the same way and attach it.
+
+This is **not** a cell for `02_stage1_finetune.ipynb` — it belongs at the
+top of whatever notebook consumes the adapter later (`03_stage2_finetune`,
+`04_eval_pipeline`, or a fresh session of this one after a disconnect). One
+cell, and it assumes `BASE_MODEL` and `bnb_config` are already defined in
+that notebook; if they aren't, copy those two definitions from the notebook's
+sections 2 and 4 into the same cell first.
 
 ```python
 from peft import PeftModel
