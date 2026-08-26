@@ -20,7 +20,9 @@ now — fill each in as the literature review and dataset design settle:
 
 To open one in Colab, run `python scripts/colab_link.py [notebook]` — it
 pre-flights the notebook and prints a link that opens it straight from
-GitHub. Setup details for `02_stage1_finetune.ipynb` are in
-`docs/colab_setup.md`.
+GitHub. `02_stage1_finetune.ipynb` then sets itself up (GPU check, installs,
+Drive mount, repo clone) in its own section 2, so Run all is the whole
+procedure; `docs/colab_setup.md` covers what to do before connecting to a
+runtime, GPU choice, and troubleshooting.
 
 See the project plan for the full rationale and model/dataset choices.

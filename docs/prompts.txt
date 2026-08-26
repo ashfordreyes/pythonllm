@@ -44,3 +44,75 @@ Looking at colab_setup.py is there anything I can do to keep the amount of time 
 
 2026-08-26T23:16:16Z [claude-code-web]
 One more check up before I start using colab, we will be reviewing and editing colab_setup.md alright? I want to set up everything possible before having to connect to a runtime for terminal access, etc. I want to be able to upload the notebook or have a command that uploads it for me. Except when I uploaded it my first try an hour ago the cells seemed to be empty but the files were there, is there something setting up drive so that necessary files can persist?
+
+2026-08-26T23:30:32Z [claude-code-terminal]
+When I ran the first cell in section 3 I got this error: ModuleNotFoundError                       Traceback (most recent call last)
+
+/tmp/ipykernel_9384/4265204591.py in <cell line: 0>()
+      2 
+      3 sys.path.insert(0, "pythonllm/src")
+----> 4 from dsl.schema import SPECIAL_TOKENS
+      5 
+      6 print("DSL special tokens:", SPECIAL_TOKENS)
+
+ModuleNotFoundError: No module named 'dsl'
+
+2026-08-26T23:37:15Z [claude-code-terminal]
+I got several errors while running the 02_stage1_finetune.ipynb in Google Colab. Section 1 cell 1 runs with checkmark, section 2 cell 1 run with checkmark. But section 3 cell 1 returns this error: ModuleNotFoundError                       Traceback (most recent call last)
+
+/tmp/ipykernel_2821/4265204591.py in <cell line: 0>()
+      2 
+      3 sys.path.insert(0, "pythonllm/src")
+----> 4 from dsl.schema import SPECIAL_TOKENS
+      5 
+      6 print("DSL special tokens:", SPECIAL_TOKENS)
+
+ModuleNotFoundError: No module named 'dsl'
+
+
+---------------------------------------------------------------------------
+NOTE: If your import is failing due to a missing package, you can
+manually install dependencies using either !pip or !apt.
+
+To view examples of installing some common dependencies, click the
+"Open Examples" button below., setcion 4 cell 1 returns this error: config.json: 100%
+ 663/663 [00:00<00:00, 93.4kB/s]
+
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+model.safetensors.index.json: 100%
+ 27.8k/27.8k [00:00<00:00, 3.73MB/s]
+Download complete: : 
+ 13.1GB,  293MB/s  
+Reconstruction complete: 100%
+ 15.2GB / 15.2GB,  342MB/s  
+Fetching 4 files: 100%
+ 4/4 [00:41<00:00,  7.47s/it]
+Loading weights: 100%
+ 339/339 [00:04<00:00, 93.01it/s]
+
+---------------------------------------------------------------------------
+
+NameError                                 Traceback (most recent call last)
+
+/tmp/ipykernel_2821/937703176.py in <cell line: 0>()
+     15     torch_dtype=torch.bfloat16,
+     16 )
+---> 17 model.resize_token_embeddings(len(tokenizer))
+     18 model.config.use_cache = False
+
+NameError: name 'tokenizer' is not defined
+
+generation_config.json: 100%
+ 243/243 [00:00<00:00, 34.8kB/s], section 5 cell 1 returns this error NameError                                 Traceback (most recent call last)
+
+/tmp/ipykernel_2821/2621992446.py in <cell line: 0>()
+      1 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+      2 
+----> 3 model = prepare_model_for_kbit_training(model)
+      4 
+      5 lora_config = LoraConfig(
+
+NameError: name 'model' is not defined. I also think colab_setup.md needs a review because the instructions don't make sense. It seems like you can almost just enter the link to visit the colab and then it should work, but it doesnt. Should we add instructions into the colab itself to do as we go through each cell? And then just make sure the instructions in the colab reflect that? I also like how the colab setup markdown file has pre-setup instructions for things that can be done before connecting to the runtime.
