@@ -30,3 +30,6 @@ Is this file up to date and has file paths setup so I can click run and make sur
 
 2026-08-26T22:35:21Z [claude-code-vscode]
 test prompt to see if it works
+2026-08-26T22:49:43Z [claude-code-terminal]
+I am going to need you to expand and add details to the instructions in colab setup
+
