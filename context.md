@@ -13,6 +13,99 @@ top. Periodically fold anything durable into `CLAUDE.md` and prune this file.
 
 ---
 
+## 2026-08-27 — Held-out split + layered eval scoring + PNG charts
+
+Closed the last two `docs/next_fixes.md` items together, since neither is
+usable alone: a split with nothing to score, or charts with no data source.
+
+- **The split had to be index-based.** `scripts/check_data.py` enforces that
+  line N's `pseudocode` is byte-identical in the Stage 1 and Stage 2 JSONLs.
+  `src/splits.py` shuffles `range(n)` under `random.Random(SPLIT_SEED)`, so
+  both stages hold out the same rows from the seed alone — no split file, no
+  split metadata in the training payload, and end-to-end eval necessarily
+  scores both stages on the same tasks. 50 -> 40 train / 10 eval.
+- **Execution-based scoring measures almost nothing on this data.** Only 8 of
+  50 reference snippets are statically safe to `exec`, and only 4 actually
+  run — the other 4 die on `FileNotFoundError` from calls like
+  `pd.read_csv("sales.csv")`, which no import-level check can catch. Rather
+  than chase that with more static analysis, `is_executable_example()` gates
+  empirically on the *reference*: if the reference can't run here, a correct
+  generation couldn't either, so the example is excluded from that tier's
+  denominator instead of counted as a failure.
+- **So scoring is layered** (`src/eval/scoring.py`): plan well-formedness,
+  verb sequence, exact match, code parse, self-containment, execution — each
+  with its own `attempted` count, so a dormant tier reports "not attempted"
+  rather than 0%. `harness.run_and_check(code, check=lambda ns: True)` is
+  reused for the execution tier; passing a trivial check makes the metric
+  "ran to completion without raising", which is all this data supports (no
+  example carries a per-example checker).
+- **Charts** are `src/eval/plots.py`, not `harness.py` — executing code and
+  drawing charts are different jobs. matplotlib/`Agg`, light mode, palette
+  `#2a78d6`/`#eb6834` validated for CVD separation.
+- Notebook 02 now trains on the train split, evaluates each epoch, dumps
+  `trainer.state.log_history` + a loss PNG (new section 7b) to Drive
+  alongside the adapter, and section 10 generates for a **held-out** task —
+  closing the "code-14 is a smoke test, not an eval" note below.
+  `load_best_model_at_end` was rejected: choosing a checkpoint by the loss of
+  10 examples selects on noise.
+- `notebooks/04_eval_pipeline.ipynb` now exists (Stage 1 end to end; Stage 2
+  and end-to-end sections documented but gated on notebook 03).
+
+**Open limitation, deliberately not papered over:** with `SPLIT_SEED = 0`
+none of the 4 executable examples land in the held-out set, so `code_executes`
+reports "not attempted". Picking a seed that gives better coverage would be
+choosing the split after seeing the answers. `scripts/check_data.py` prints
+this on every run; the real fix is more executable examples in the dataset.
+
+Verified locally (no GPU): split determinism/disjointness/40-10, Stage 1 and
+Stage 2 eval splits byte-identical on `pseudocode`, reference-vs-reference
+scoring 50/50 on all three plan tiers and on `code_parses`, 8/50
+`self_contained`, 4/4 `executes`, all three plot functions producing non-empty
+PNGs (including on empty input), and `scripts/check_data.py` still printing
+`OK: 50 pairs`. Not yet run on Colab.
+
+## 2026-08-27 — Stage 1 DSL special tokens were never actually trained
+
+Investigating `docs/next_fixes.md` item 1 ("`LoraConfig` missing
+`modules_to_save`") showed the filed diagnosis was backwards, and the
+underlying defect invalidates the first training run's handling of the DSL
+tokens.
+
+- `Qwen2.5-7B-Instruct` declares `vocab_size: 152064` but its stock
+  tokenizer only reaches id 151664, so `<PLAN>`/`</PLAN>`/`<STEP>` land at
+  151665-151667 and `len(tokenizer)` is 151668 — inside the existing
+  matrix. `model.resize_token_embeddings(len(tokenizer))` in section 4 was
+  therefore *shrinking* the embedding 152064 -> 151668, never growing it.
+  The notebook's claim that skipping it would break the first `<PLAN>` id
+  lookup was wrong for this base model.
+- `prepare_model_for_kbit_training` freezes every base parameter and
+  `get_peft_model` only unfreezes LoRA plus `modules_to_save`, so
+  `embed_tokens` and `lm_head` were frozen for the whole run. A shrinking
+  resize truncates rows without re-initializing them. **The three DSL token
+  rows in the existing Drive adapter are untrained base-model values on
+  both the input and output side** — the adapter should be retrained rather
+  than evaluated.
+- The ~4.3GB artifact was a side effect: PEFT's
+  `save_embedding_layers="auto"` triggers on `config.vocab_size` differing
+  from the base config, dumping fp32 copies of two frozen matrices.
+
+Fixed in `02_stage1_finetune.ipynb` by removing the resize (replaced with
+an assert that the ids fit the base vocab) and adding
+`trainable_token_indices={"embed_tokens": ids, "lm_head": ids}` to
+`LoraConfig` — PEFT's `TrainableTokens`, which trains exactly those three
+rows (~21K parameters) and supports both `nn.Embedding` and the untied
+`nn.Linear` `lm_head`. `modules_to_save=["embed_tokens", "lm_head"]` was
+rejected: ~1.09B trainable fp32 parameters, roughly 13-17GB of extra
+gradient and optimizer state (likely OOM on the L4 the notebook supports),
+a multi-GB artifact, and it would still not have fixed reloading.
+
+Consequences elsewhere: `docs/colab_setup.md` §8 no longer needs
+`base.resize_token_embeddings(...)` before `PeftModel.from_pretrained` (a
+note covers pre-2026-08-27 adapters, which do), and `docs/next_fixes.md`
+items 1 and 2 are both closed by this one change. Not yet verified on
+hardware — the checks to run during the next Colab run are listed in the
+plan and in the notebook's section 4/5/8 markdown.
+
 ## 2026-08-26 — Fixed section 10 sanity-check crash (`apply_chat_template` return type)
 
 Training completed and the adapter was already saved to Drive (sections

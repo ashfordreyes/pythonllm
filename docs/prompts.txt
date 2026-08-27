@@ -159,3 +159,6 @@ AttributeError:
 Can I just not run it and nothing happens? but my model is saved in google drive?
 2026-08-27T00:03:46Z [claude-code-terminal] Edit no code, this is just a question. Should I save the weights to somewhere other than ONLY google drive? Should I use weights & biases, or some other hosting service? Save copies locally? What files from drive do I need to save?
 2026-08-27T00:04:48Z [claude-code-terminal] Create a file to /docs/ called "weight_saving.md" with these details for my use and future contributors/users use.
+
+2026-08-27T11:20:50Z [claude-code-terminal] If you check /next_fixes md you'll see we have some things to work on. We'll do one problem at a time to save tokens and be more targeted with our fix. The first problem "notebooks/02_stage1_finetune.ipynb' - 'LoraConfig' missing "modules_to_save" is the only cell that got an error when I completed a training run yesterday. Look at the note Claude Code wrote to start diagnosing the problem, but also spend some time exploring it yourself to make sure as many avenues as possible are covered.
+2026-08-27T11:50:45Z [claude-code-terminal] /plan Lets work on the last two problems. They are related so we can do both of them at the same time. Go to /next_fixes and read the notes on the last two problems, but also do your own diagnosing to make sure we don't miss any avenues.

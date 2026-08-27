@@ -1,7 +1,8 @@
 # Notebooks
 
-These are meant to run on Google Colab (Pro, A100/L4) and are added as stubs for
-now — fill each in as the literature review and dataset design settle:
+These are meant to run on Google Colab (Pro, A100/L4). `02` and `04` are
+written; `01` and `03` are still stubs, to fill in as the literature review
+and dataset design settle:
 
 1. `01_data_collection.ipynb` — source real Python code (DS/DL notebooks
    from Kaggle/DS-1000/GitHub, plus everyday scripts, GUI apps, and
@@ -13,10 +14,19 @@ now — fill each in as the literature review and dataset design settle:
    DSL special tokens from `src/dsl/schema.py` before training.
 3. `03_stage2_finetune.ipynb` — QLoRA fine-tune the Coder base model
    (e.g. Qwen2.5-Coder-7B) on `(pseudocode -> python_code)` pairs.
-4. `04_eval_pipeline.ipynb` — run held-out examples through Stage 1 alone,
-   Stage 2 alone, and end-to-end; score with `src/eval/harness.py`
-   (execution-based, DS-1000-style checks) plus `src/dsl/validator.py` for
-   plan well-formedness.
+4. `04_eval_pipeline.ipynb` — load the Stage 1 adapter from Drive, generate
+   plans for the 10 held-out tasks, score them with `src/eval/scoring.py`,
+   and write a results JSON plus `.png` charts back to Drive. Scoring is
+   layered (plan validity via `src/dsl/validator.py`, verb-sequence and exact
+   match, then code parse/self-containment/execution via
+   `src/eval/harness.py`), because only 4 of the 50 reference snippets can
+   actually be executed in a bare runtime. Its Stage 2 and end-to-end
+   sections are documented but not runnable until `03` exists.
+
+Both stages hold out the *same* rows: `src/splits.py` derives them by index
+from `SPLIT_SEED`, so end-to-end eval scores Stage 1 and Stage 2 on the same
+tasks without a split file. `python scripts/check_data.py` prints the
+resolved split.
 
 To open one in Colab, run `python scripts/colab_link.py [notebook]` — it
 pre-flights the notebook and prints a link that opens it straight from

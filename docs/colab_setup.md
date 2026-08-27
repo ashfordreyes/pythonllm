@@ -276,17 +276,43 @@ ADAPTER = "/content/drive/MyDrive/pythonllm_checkpoints/stage1_planner"
 
 tokenizer = AutoTokenizer.from_pretrained(ADAPTER)          # has the DSL tokens
 base = AutoModelForCausalLM.from_pretrained(BASE_MODEL, quantization_config=bnb_config, device_map="auto")
-base.resize_token_embeddings(len(tokenizer))                # must match the saved adapter
 model = PeftModel.from_pretrained(base, ADAPTER)
 model.eval()
 ```
 
-The resize is required — the adapter was trained against the enlarged
-embedding matrix and won't load onto the stock vocab size.
+No `resize_token_embeddings` call is needed: section 4 of the notebook
+leaves the base vocab size alone (the DSL token ids already fit
+Qwen2.5-7B's 152064-row matrix), so the adapter loads straight onto a stock
+base model. Loading the tokenizer from `ADAPTER` rather than from
+`BASE_MODEL` still matters, though — that is where the DSL special tokens
+live.
+
+Adapters produced *before* 2026-08-27 were trained with the old shrinking
+resize and do need `base.resize_token_embeddings(len(tokenizer))` before
+this line. They also have untrained DSL token embeddings (see `context.md`),
+so retraining is the better option.
 
 ## 9. Next steps
 
 With an adapter in Drive, download it or point `03_stage2_finetune.ipynb` /
 `04_eval_pipeline.ipynb` at the same Drive path to keep working across
-sessions. `04_eval_pipeline.ipynb` scores plans with `src/dsl/validator.py`
-(well-formedness) and `src/eval/harness.py` (execution-based, DS-1000-style).
+sessions.
+
+`04_eval_pipeline.ipynb` is the natural next run. Open it with
+`python scripts/colab_link.py notebooks/04_eval_pipeline.ipynb`; its
+`ADAPTER_DIR` already defaults to the path section 9 of notebook 02 writes,
+so on a fresh runtime it is Run all. It generates plans for the 10 held-out
+tasks, scores them, and writes `stage1_results.json`, `score_breakdown.png`
+and `plan_error_types.png` into
+`/content/drive/MyDrive/pythonllm_checkpoints/eval_stage1`.
+
+Its `SPLIT_SEED` and `EVAL_FRACTION` must match the values notebook 02
+trained with — the held-out rows are derived from the seed, not stored in a
+file, so a mismatch silently evaluates on training data. Both notebooks
+default to `SPLIT_SEED = 0` / `EVAL_FRACTION = 0.2`.
+
+Scoring is layered rather than execution-only: plan well-formedness via
+`src/dsl/validator.py`, verb-sequence and exact match, then code
+parse/self-containment/execution via `src/eval/harness.py`. Only 4 of the 50
+reference snippets run in a bare runtime, so an execution-only score would
+rest on almost nothing; each tier reports its own denominator instead.
