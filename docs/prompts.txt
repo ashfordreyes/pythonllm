@@ -190,3 +190,7 @@ One thing, these fixes assume I am going for maximum GPU use reduction before ru
 
 2026-08-27T22:27:08Z [claude-code-web]
 My rationale is that I am looking for maximum efficiency on a small GPU, that way even when I lose internet I can keep working.
+
+2026-08-27T22:31:54Z [claude-code-web]
+The lspci command returned: non volatile memory controller: sandisk corp sandisk ultra 3d / wd pc sn530, ix sn530, blue sn550 nvme ssd (dram-less) (rev 01)
+vga compatible controller: nvidia corporation tu104 [geforce rtx 2060] (rev a1)

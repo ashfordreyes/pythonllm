@@ -13,6 +13,40 @@ top. Periodically fold anything durable into `CLAUDE.md` and prune this file.
 
 ---
 
+## 2026-08-27 — hardware facts in: no iGPU, and the die name does not match
+
+`lspci` run on the target. Two findings, one settled and one that needs a
+follow-up command.
+
+- **P1b RESOLVED: there is no integrated GPU.** Exactly one display device:
+  `NVIDIA Corporation TU104 [GeForce RTX 2060] (rev a1)`. The iGPU path was
+  the plan's recommendation because it was the only option that removed the
+  desktop's VRAM variability without changing how the machine is used. It does
+  not exist here. So: the desktop stays on the 2060 during every run, the
+  deployment budget is P1's high-water figure minus headroom, and **the 0.5 GB
+  reserve is mandatory, not prudent.** Headless remains a measurement tool
+  only (§0: the machine is in normal use while the model runs).
+- **Consequence: on a 6 GB card, 7B @ Q4_K_M is not deployable.** ~4.7 weights
+  + ~0.12 KV + ~0.4 buffers = ~5.2 GB against a ~4.8-5.2 GB varying budget.
+  Zero headroom, no iGPU to recover it, and §0's tie-breaker says take the
+  headroom. It stays in the bake-off as the quality reference the smaller arms
+  are trying to match. 7B @ Q5_K_M is dropped outright.
+- **NEW P1c — OPEN, and it blocks every budget figure in the plan.** `lspci`
+  names the die **TU104**. That is RTX 2070 SUPER / 2080 / 2080 SUPER silicon;
+  the normal RTX 2060 die is TU106, and TU104 reaches 2060-class boards only
+  as late-run salvage. Either a genuine TU104-salvage 6 GB 2060 (everything
+  stands) or a `pci.ids` mislabel of a possibly **8 GB** card. An 8 GB card
+  moves the working budget to ~6.8-7.2 GB, puts 7B @ Q5_K_M back in range and
+  changes D-3's answer. Settle it with
+  `nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv`.
+  Either way the Turing facts hold: TU104 and TU106 are both sm_75.
+- **P4 partially answered: DRAM-less SN530-class NVMe (PCIe 3.0 x4).** Better
+  than it sounds for D-2's swap fallback — loading is a large sequential read
+  (~2-2.5 GB/s, so a cold 4.7 GB GGUF is ~2-3 s); the DRAM-less penalty lands
+  on random I/O and sustained writes. Conclusion: **the page cache matters more
+  on this hardware**, since RAM keeps swaps off the drive entirely. The RAM
+  figure is still missing and is the part of P4 that gates D-2.
+
 ## 2026-08-27 — the goal is offline resilience, and it settles three arguments
 
 The 6GB target's *rationale* was missing from the repo: maximum useful work per

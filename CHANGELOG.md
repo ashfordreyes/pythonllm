@@ -10,6 +10,43 @@ transcripts; see those for full detail behind any entry here.
 
 ### Changed
 
+- **`docs/mega_plan.md` — P1b resolved from the target machine's `lspci`: there
+  is no integrated GPU, which removes the recommended configuration and makes
+  the marginal case the deployment case.** The machine reports exactly one
+  display device (`NVIDIA Corporation TU104 [GeForce RTX 2060]`). The iGPU
+  path was the plan's recommendation precisely because it was the only option
+  that removed the desktop's VRAM variability without changing how the machine
+  is used; with no iGPU, the desktop stays on the 2060 during every run, the
+  deployment budget is P1's high-water figure minus headroom, and the 0.5 GB
+  reserve becomes mandatory rather than prudent since nothing else absorbs the
+  variation. Consequence for Phase D, recorded on the arms: on a 6 GB card
+  **7B @ Q4_K_M is no longer deployable** — ~5.2 GB all-in against a
+  ~4.8-5.2 GB varying budget, and §0's tie-breaker says take the headroom — so
+  it stays in the bake-off as the quality reference the smaller arms aim at,
+  and 7B @ Q5_K_M is dropped outright. Headless was already demoted to a
+  measurement tool and stays there.
+- **`docs/mega_plan.md` — added P1c, because `lspci` named a die that does not
+  match the card and every budget here derives from 6144 MiB.** The reported
+  die is **TU104**, which is RTX 2070 SUPER / 2080 / 2080 SUPER silicon; the
+  normal RTX 2060 die is TU106, and TU104 reaches 2060-class boards only as
+  late-run salvage. So the string is either a genuine TU104-salvage 6 GB 2060,
+  or a `pci.ids` mislabel of a different and possibly 8 GB card. That is worth
+  one command rather than an assumption: an 8 GB card moves the working budget
+  from ~4.8-5.2 GB to ~6.8-7.2 GB, puts 7B @ Q5_K_M back in range and changes
+  D-3's answer. Recorded that the Turing facts are unaffected either way —
+  TU104 and TU106 are both sm_75 — so no bf16, same GGUF path, similar
+  bandwidth.
+- **`docs/mega_plan.md` — P4 partially answered: the boot device is a
+  DRAM-less SN530-class NVMe, which the process-swap fallback survives.**
+  Recorded because "DRAM-less" reads worse than it is here: model loading is a
+  large sequential read, the pattern these drives handle acceptably (~2-2.5
+  GB/s, so a cold 4.7 GB GGUF is ~2-3 s), while the DRAM-less penalty lands on
+  random I/O and sustained writes. The operational conclusion is that the page
+  cache matters *more* on this hardware, since RAM is what keeps a stage swap
+  off the drive entirely — so the still-missing RAM figure is the part of P4
+  that actually gates D-2.
+
+
 - **`docs/mega_plan.md` — the rationale behind the 6GB target is now written
   down, because it settles arguments the plan was leaving open.** The
   constraint was recorded ("runs entirely on one RTX 2060") without the reason

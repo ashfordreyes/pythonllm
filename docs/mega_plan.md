@@ -116,13 +116,14 @@ Consequences that constrain every step below:
   into. KV cache is small on Qwen2.5-7B (GQA: 28 layers x 4 KV heads x 128
   dim, ~56 KB/token at fp16, so ~115 MB at 2048 ctx) — the 0.4 GB of buffers
   and the 0.5 GB of slack are the terms people forget.
-- **The current baseline arm is marginal, and this is the finding that
-  matters.** 7B @ Q4_K_M under normal desktop use: 4.7 weights + ~0.12 KV +
+- **The current baseline arm is marginal, and on this machine that is now
+  decisive.** 7B @ Q4_K_M under normal desktop use: 4.7 weights + ~0.12 KV +
   ~0.4 buffers = **~5.2 GB against a ~4.8-5.2 GB varying budget, with zero
-  headroom.** It may load and run fine, then die when a video starts. Either
-  the iGPU path (P1b) restores the ~0.8 GB that makes it comfortable, or D-3
-  has to come down a size. Do not treat 7B @ Q4 as the safe default it looks
-  like in the table.
+  headroom.** It may load and run fine, then die when a video starts. The
+  escape hatch was the iGPU path — **and P1b has resolved: this machine has no
+  integrated graphics.** So on a 6 GB card D-3 has to come down a size. Do not
+  treat 7B @ Q4 as the safe default it looks like in the table. (P1c is
+  checking whether the card is in fact 6 GB.)
 - **The binding resource moves from VRAM to system RAM and disk.** Two GGUFs
   are ~9.4 GB on disk, and the swap is only cheap if both stay in the page
   cache. Budget 16 GB of system RAM as a floor, 32 GB to be comfortable. See
@@ -305,23 +306,58 @@ Then two reference readings to isolate where it goes:
 **Done when:** the high-water figure, the two reference figures, and the
 resulting budget after the headroom rule are in `context.md`.
 
-### P1b. Decide how the display is driven
-**Check for an iGPU first** — `lspci | grep -iE 'vga|3d|display'`. If there is
-one, making it primary in the BIOS and moving the monitor cable to the
-motherboard is the recommended configuration: it recovers ~0.8 GB *and*
-removes the variability P1 is measuring, for a one-time change and no change
-to how you use the machine. It is also what decides whether 7B @ Q4_K_M is a
-safe arm or a marginal one.
+### P1b. Decide how the display is driven — **RESOLVED 2026-08-27: no iGPU**
+`lspci` on the target reports exactly one display device:
 
-If there is no iGPU, the deployment budget is P1's high-water figure minus
-the headroom rule, and D-3 has to be sized against that. Headless is not the
-answer here — the machine is in normal use while the model runs.
+```
+VGA compatible controller: NVIDIA Corporation TU104 [GeForce RTX 2060] (rev a1)
+```
 
-Whichever configuration you land on is the one every later measurement (D,
-F4) must be taken under.
+No integrated graphics. **The iGPU path does not exist on this machine**, so
+the recommended configuration is off the table and the fallback is the
+deployment case:
 
-**Done when:** the chosen configuration is recorded in `context.md`, along
-with whether an iGPU exists, and the budget figure Phase D/F uses matches it.
+- The desktop stays on the 2060, permanently and during every run.
+- The deployment budget is P1's high-water figure minus the headroom rule,
+  and D-3 must be sized against that — not against 6144 MiB, and not against
+  a headless reading.
+- Headless is not an option here. The machine is in normal use while the
+  model runs (§0), so `multi-user.target` stays a measurement tool only.
+- **The 0.5 GB reserve is now mandatory rather than prudent**, because
+  nothing else absorbs the desktop's variation.
+
+The one cheap mitigation that survives: disabling browser hardware
+acceleration recovers a few hundred MB without changing how the machine is
+used. Worth doing. Not worth sizing against.
+
+**Done when:** done — recorded here and in `context.md`. What is still open is
+P1's high-water figure and the card's true VRAM (see P1c).
+
+### P1c. Confirm the card's actual VRAM — **blocks every budget in this doc**
+`lspci` names the die **TU104**, which is not the usual RTX 2060 silicon.
+TU106 is the normal RTX 2060 die; TU104 is what RTX 2070 SUPER / 2080 /
+2080 SUPER are built on, and it appears on RTX 2060-class boards only as
+late-run die salvage. So the label is either a genuine TU104-salvage RTX 2060
+(6 GB, everything here stands) or a `pci.ids` mislabel of a different,
+possibly **8 GB**, card.
+
+This is not a curiosity. Every number in this document is derived from
+6144 MiB. An 8 GB card would move the working budget from ~4.8-5.2 GB to
+~6.8-7.2 GB, which puts 7B @ Q5_K_M comfortably in range and changes D-3's
+answer. Do not take `lspci`'s marketing string as authoritative — ask the
+driver:
+
+```bash
+nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv
+```
+
+Note that either way the Turing facts above are unaffected: TU104 and TU106
+are both sm_75, so no bf16, the same llama.cpp/GGUF deployment path, and
+similar memory bandwidth.
+
+**Done when:** the driver-reported name, total VRAM and compute capability are
+in `context.md`, and if it is not 6144 MiB every budget figure in this
+document has been recomputed.
 
 ### P2. Resolve the teacher model (D-5)
 Confirm whether `projectj/Instinct-Python-Coder-Gemma4-12B-KimiK3` exists and
@@ -350,6 +386,16 @@ check earns its keep.
 on a non-zero exit.
 
 ### P4. Record system RAM and free disk
+**Partially answered 2026-08-27:** the boot device is a SanDisk/WD SN530-class
+**DRAM-less** NVMe (PCIe 3.0 x4). Two consequences for D-2's process-swap
+fallback. Good: model loading is a large *sequential* read, which is where
+these drives are least penalized — expect roughly 2-2.5 GB/s, so a cold
+~4.7 GB GGUF load lands around **2-3 s**, not the disaster "DRAM-less" might
+suggest. Bad: DRAM-less means the drive leans on Host Memory Buffer and
+degrades sharply under random I/O and sustained writes, so a swap forced to
+hit disk on a busy system is less predictable than the sequential number
+implies. Net: **the page cache matters more here, not less** — RAM is what
+keeps the swap off this drive entirely. Still needed: the RAM figure.
 Only relevant because the design is sequential. If D-2 lands on the process
 swap, the swap is fast only while both GGUFs sit in the page cache; if they
 do not, every stage transition re-reads gigabytes from disk. `free -h` and
@@ -561,12 +607,14 @@ on an idle desktop has not passed.
 Score every arm **on both stages separately**, since the sequential design
 lets the two stages pick different points (D-3).
 
-- `Qwen2.5-Coder-7B-Instruct` @ Q4_K_M (~4.7 GB) — current baseline, but
-  **marginal without an iGPU**: ~5.2 GB all-in against a ~4.8-5.2 GB varying
-  budget leaves no headroom. Score it either way; only deploy it if P1b gave
-  you the iGPU path.
-- `Qwen2.5-Coder-7B-Instruct` @ Q5_K_M (~5.4 GB) — **iGPU path only.** Include
-  it if P1b went that way; drop it outright otherwise.
+- `Qwen2.5-Coder-7B-Instruct` @ Q4_K_M (~4.7 GB) — the original baseline.
+  **P1b resolved against it on a 6 GB card:** there is no iGPU, so ~5.2 GB
+  all-in against a ~4.8-5.2 GB varying budget leaves no headroom, and §0's
+  tie-breaker says take the headroom. Keep it in the bake-off as the quality
+  reference — it is what the smaller arms are trying to match — but treat it
+  as **not deployable** unless P1c reports more than 6144 MiB.
+- `Qwen2.5-Coder-7B-Instruct` @ Q5_K_M (~5.4 GB) — **drop unless P1c reports
+  an 8 GB card.** No iGPU path exists to make it fit at 6 GB.
 - `Qwen2.5-Coder-3B-Instruct` @ Q4_K_M or Q5_K_M (~2.0-2.3 GB) — the arm that
   exists specifically because the budget varies. Comfortable headroom under
   normal desktop use with no BIOS change and no habits to keep. If the
