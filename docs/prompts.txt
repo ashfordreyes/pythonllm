@@ -175,3 +175,6 @@ The whole project is designed to run on a RTX 2060 6GB VRAM. Right now I am in t
 
 2026-08-27T18:32:15Z [claude-code-remote]
 If I switch from using Pseudocode (as I call it). To a comments based way, what do I have to do? I still want to separate the planner and the coder, yes it increases inference time, but thats okay if I can get great results on small hardware. How do I finetune Qwen2.5-7b-Planner for this use case? Can I make it reason through problems and then deliver a solution for Coder to understand?
+
+2026-08-27T18:36:57Z [claude-code-remote]
+Before writing a plan, can all of this effectively be one plan that Sonnet 5 works away at for a bit, or should what we discussed be multiple steps?
