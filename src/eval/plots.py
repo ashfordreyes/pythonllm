@@ -53,16 +53,20 @@ def _save(fig, out_path: str | Path) -> Path:
     return out_path
 
 
-def plot_loss_curve(log_history: list[dict], out_path: str | Path) -> Path:
+def plot_loss_curve(
+    log_history: list[dict], out_path: str | Path, title: str = "Stage 1 training loss"
+) -> Path:
     """Plot train and eval loss over steps from `trainer.state.log_history`.
 
     Both losses share one y-axis on purpose -- they are the same measure, and a
-    second scale would make the gap between them unreadable.
+    second scale would make the gap between them unreadable. `title` defaults
+    to the Stage 1 caption so `02_stage1_finetune.ipynb`'s existing call site
+    needs no change; `03_stage2_finetune.ipynb` passes "Stage 2 training loss".
     """
     train = [(e["step"], e["loss"]) for e in log_history if "loss" in e and "step" in e]
     evals = [(e["step"], e["eval_loss"]) for e in log_history if "eval_loss" in e and "step" in e]
 
-    fig, ax = _new_axes("Stage 1 training loss")
+    fig, ax = _new_axes(title)
     ax.set_xlabel("step", color=INK_MUTED, fontsize=10)
     ax.set_ylabel("loss", color=INK_MUTED, fontsize=10)
     ax.grid(axis="y", color=GRID, linewidth=1)

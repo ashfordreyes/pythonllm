@@ -1,8 +1,8 @@
 # Notebooks
 
-These are meant to run on Google Colab (Pro, A100/L4). `02` and `04` are
-written; `01` and `03` are still stubs, to fill in as the literature review
-and dataset design settle:
+These are meant to run on Google Colab (Pro, A100/L4). `02`, `03` and `04`
+are written; `01` is still a stub, to fill in as the literature review and
+dataset design settle:
 
 1. `01_data_collection.ipynb` — source real Python code (DS/DL notebooks
    from Kaggle/DS-1000/GitHub, plus everyday scripts, GUI apps, and
@@ -13,7 +13,12 @@ and dataset design settle:
    (e.g. Qwen2.5-7B-Instruct) on `(english -> pseudocode)` pairs. Register the
    DSL special tokens from `src/dsl/schema.py` before training.
 3. `03_stage2_finetune.ipynb` — QLoRA fine-tune the Coder base model
-   (e.g. Qwen2.5-Coder-7B) on `(pseudocode -> python_code)` pairs.
+   (`Qwen2.5-Coder-7B-Instruct`) on `(pseudocode -> python_code)` pairs. No
+   DSL special-token registration: only the Planner has to emit
+   `<PLAN>`/`<STEP>` as single tokens, so the Coder trains on stock tokenizer
+   and embeddings. Trains against `CODER_SYSTEM_PROMPT` from
+   `src/ui/generate.py`, imported rather than duplicated, so training and the
+   console's coder side can't drift apart.
 4. `04_eval_pipeline.ipynb` — load the Stage 1 adapter from Drive, generate
    plans for the 10 held-out tasks, score them with `src/eval/scoring.py`,
    and write a results JSON plus `.png` charts back to Drive. Scoring is
@@ -21,7 +26,8 @@ and dataset design settle:
    match, then code parse/self-containment/execution via
    `src/eval/harness.py`), because only 4 of the 50 reference snippets can
    actually be executed in a bare runtime. Its Stage 2 and end-to-end
-   sections are documented but not runnable until `03` exists.
+   sections are documented but not yet wired up now that `03` exists — see
+   its own section 7.
 
 Both stages hold out the *same* rows: `src/splits.py` derives them by index
 from `SPLIT_SEED`, so end-to-end eval scores Stage 1 and Stage 2 on the same
@@ -37,8 +43,8 @@ runtime, GPU choice, and troubleshooting.
 
 Once an adapter exists, `docs/colab_console.md` covers `src/ui/console.py` —
 an ASCII-panel chat UI that runs in a Colab cell rather than a notebook of its
-own, so you can talk to the Planner (and the Coder, when `03` exists) without
-re-running an eval notebook. It takes a planner callable and a coder callable
-and works with either one missing.
+own, so you can talk to the Planner and the Coder without re-running an eval
+notebook. It takes a planner callable and a coder callable and works with
+either one missing.
 
 See the project plan for the full rationale and model/dataset choices.

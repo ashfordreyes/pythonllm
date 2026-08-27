@@ -13,6 +13,34 @@ top. Periodically fold anything durable into `CLAUDE.md` and prune this file.
 
 ---
 
+## 2026-08-27 — Stage 2 notebook written; `04` section 7 wired up
+
+- **`notebooks/03_stage2_finetune.ipynb` now exists.** Base model is
+  `Qwen2.5-Coder-7B-Instruct` — the Instruct variant was picked specifically
+  so this notebook and `src/ui/generate.py`'s existing chat-template-based
+  `make_coder` machinery stay compatible without changes. It mirrors notebook
+  02's shape closely; see the CHANGELOG entry for the concrete differences
+  (no special-token section, `MAX_SEQ_LEN=1024` not 512, system prompt
+  imported from `src/ui/generate.py` instead of duplicated).
+- **The `CODER_SYSTEM_PROMPT` guess is resolved.** The previous entry below
+  flagged it as untrusted until a real Stage 2 notebook trained against it.
+  Notebook 03 now imports it directly rather than writing a second copy, so
+  the two can't drift — if the prompt wording ever needs to change, it
+  changes in `src/ui/generate.py` and both the notebook and the console pick
+  it up.
+- **`04_eval_pipeline.ipynb` section 7 is runnable now**, not just
+  documented. It loads the Stage 2 adapter, generates code two ways
+  (reference pseudocode, and the plan section 4 already generated), and
+  scores both with `score_code`/`aggregate`. Not yet run end-to-end on a real
+  GPU in this session — that still has to happen interactively on Colab, same
+  as every other notebook here so far.
+- **Open follow-up:** nobody has actually trained a Stage 2 adapter yet, so
+  none of this — notebook 03's own sanity check, or `04`'s section 7 — has
+  been exercised against real weights. Next Colab session should run
+  `03_stage2_finetune.ipynb` end to end and confirm the adapter lands at
+  `MyDrive/pythonllm_checkpoints/stage2_coder/`, matching what `04` now
+  expects.
+
 ## 2026-08-27 — Colab chat console (`src/ui/`)
 
 - **The Stage 2 notebook still doesn't exist**, and `docs/colab_setup.md`

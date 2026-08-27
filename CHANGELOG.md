@@ -10,6 +10,46 @@ transcripts; see those for full detail behind any entry here.
 
 ### Added
 
+- **`notebooks/03_stage2_finetune.ipynb` — the Coder QLoRA fine-tune.**
+  Planned with a subagent-assisted session that read `context.md`,
+  `docs/colab_setup.md` §9, `src/dsl/schema.py`, `src/eval/scoring.py`,
+  `src/splits.py` and `src/ui/generate.py` first, since the notebook had to
+  match decisions already made elsewhere in the repo rather than invent new
+  ones. Base model is `Qwen2.5-Coder-7B-Instruct` (the Instruct variant, so
+  `apply_chat_template` and `src/ui/generate.py`'s existing chat-based
+  `make_coder` work against it unmodified) on
+  `data/stage2_coder/pseudotopython.jsonl`. Structurally mirrors notebook 02,
+  with three deliberate differences: no DSL special-token registration (only
+  the Planner has to emit `<PLAN>`/`<STEP>` as single tokens, so this
+  notebook has one fewer numbered section and no `trainable_token_indices`);
+  `MAX_SEQ_LEN` raised from 512 to 1024 because reference `python_code`
+  completions run up to ~2900 characters, longer than any Stage 1 pseudocode
+  plan, and 512 would have silently truncated the longest training examples;
+  and the system prompt is *imported* from `src/ui/generate.py`'s
+  `CODER_SYSTEM_PROMPT` rather than duplicated inline, closing the exact gap
+  `context.md`'s 2026-08-27 entry flagged (that prompt was "a guess" that had
+  to be replaced by whatever this notebook trained with, or the console would
+  prompt the Coder differently than it was tuned). The notebook's own sanity
+  check calls `ui.generate.make_coder` directly so it exercises the same code
+  path the console uses.
+- **Wired up `04_eval_pipeline.ipynb` section 7 (Stage 2 + end-to-end
+  scoring), previously documented but not runnable** because it needed a
+  coder adapter that didn't exist until the entry above. Added
+  `CODER_ADAPTER_DIR`/`CODER_BASE_MODEL`/`CODER_RESULTS_DIR`/
+  `CODER_MAX_NEW_TOKENS` to the config cell, a cell that loads the Stage 2
+  adapter the same way section 3 loads Stage 1's, and cells that score both
+  "Stage 2 alone" (reference pseudocode -> generated code) and "end to end"
+  (english -> generated plan -> generated code) with `score_code`, writing
+  JSON results and score-breakdown PNGs to
+  `MyDrive/pythonllm_checkpoints/eval_stage2/`. Reuses `ui.generate.make_coder`
+  for generation rather than a third hand-rolled `generate()` call.
+- Added an optional `title` parameter to `src/eval/plots.py`'s
+  `plot_loss_curve` (default unchanged, `"Stage 1 training loss"`) because
+  reusing it as-is in notebook 03 would have mislabeled the Stage 2 loss
+  chart. Notebook 03 passes `title="Stage 2 training loss"`.
+- Updated `notebooks/README.md` and `docs/colab_setup.md` to stop describing
+  `03_stage2_finetune.ipynb` as unwritten, and to call out where it differs
+  from notebook 02 for anyone comparing the two side by side.
 - **An ASCII chat console for the two stages (`src/ui/`), plus
   `docs/colab_console.md`.** Asked whether the Colab experience could look
   like a CLI tool's box-drawn "almost-GUI" instead of raw `print()` output,

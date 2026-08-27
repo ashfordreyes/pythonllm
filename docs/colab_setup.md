@@ -16,11 +16,12 @@ you connect to a runtime (§1-2, free), which GPU to pick (§3), what survives
 a session ending (§4), how not to waste compute units (§6), and what to do
 when something breaks (§7).
 
-**Scope: Stage 1 only.** This file covers training the *Planner*. There is no
-Stage 2 notebook yet — `notebooks/03_stage2_finetune.ipynb` appears in
-`notebooks/README.md` and in §8/§9 below as the thing that will consume the
-Stage 1 adapter, but it has not been written, so nothing here tells you how to
-train the Coder. §9 says what does exist for Stage 2 today.
+**Scope: Stage 1 only.** This file covers training the *Planner* with
+`02_stage1_finetune.ipynb`. Training the *Coder* is
+`03_stage2_finetune.ipynb`, which now exists — its own structure mirrors this
+notebook closely enough that this file's GPU/persistence/troubleshooting
+guidance (§3-§7) applies to it too, but §9 below is where the differences
+that matter (no special-token step, different base model) are called out.
 
 ## Do this before you connect to a runtime
 
@@ -324,16 +325,34 @@ rest on almost nothing; each tier reports its own denominator instead.
 
 ### Stage 2 (the Coder)
 
-`03_stage2_finetune.ipynb` does not exist. Training the Coder means writing
-it first — the shape is notebook 02 with `Qwen2.5-Coder-7B` as the base,
-`data/stage2_coder/pseudotopython.jsonl` as the data, `pseudocode` as the
-prompt field and `python_code` as the completion, and **no DSL special-token
-registration** (the Coder reads the plan as ordinary text; only the Planner
-has to emit `<PLAN>`/`<STEP>` as single tokens). The split helper already
-hands back the same held-out rows for both files, so
-`load_split(STAGE2_DATA, ...)` under the same `SPLIT_SEED` needs no extra
-work. Section 7 of `04_eval_pipeline.ipynb` documents the eval side that
-turns on once a coder adapter exists.
+Run `python scripts/colab_link.py notebooks/03_stage2_finetune.ipynb` to open
+it — same procedure as §2 above, just naming the other notebook. It fine-tunes
+`Qwen2.5-Coder-7B-Instruct` on `data/stage2_coder/pseudotopython.jsonl`
+(`pseudocode` as the prompt, `python_code` as the completion) and saves its
+adapter to `MyDrive/pythonllm_checkpoints/stage2_coder/`, parallel to Stage
+1's `stage1_planner/`.
+
+Differences from `02_stage1_finetune.ipynb`, if you're comparing them
+side by side:
+
+- **No DSL special-token registration.** The Coder reads `<PLAN>`/`<STEP>` as
+  ordinary text; only the Planner has to emit them as single tokens. So
+  notebook 03 has one fewer numbered section, and its LoRA config has no
+  `trainable_token_indices` — nothing new was added to the vocabulary to
+  train.
+- **`MAX_SEQ_LEN` is 1024, not 512.** Reference `python_code` completions run
+  longer than Stage 1 pseudocode plans (up to ~2900 characters).
+- **The system prompt is imported, not inlined.** Notebook 03 trains against
+  `CODER_SYSTEM_PROMPT` from `src/ui/generate.py` rather than a copy written
+  into the notebook, so training and `src/ui/console.py`'s coder side can't
+  drift apart.
+- Its own section 9 sanity check calls `ui.generate.make_coder` directly,
+  so what you see there is exactly what the console will produce.
+
+The split helper already hands back the same held-out rows for both files
+under the shared `SPLIT_SEED`/`EVAL_FRACTION`, so nothing needs to be kept in
+sync by hand. Section 7 of `04_eval_pipeline.ipynb` documents the eval side
+that can now be wired up against a real coder adapter.
 
 ### A nicer way to use the models
 
