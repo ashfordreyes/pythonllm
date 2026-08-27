@@ -13,6 +13,37 @@ top. Periodically fold anything durable into `CLAUDE.md` and prune this file.
 
 ---
 
+## 2026-08-27 — the goal is offline resilience, and it settles three arguments
+
+The 6GB target's *rationale* was missing from the repo: maximum useful work per
+GB of a small GPU, so that **losing internet does not stop the work**. Written
+into `docs/mega_plan.md` §0 because it decides things the plan was leaving open.
+
+- **No fallback when it matters.** A hosted model is not a backstop for a local
+  one during the outage that removes it. So "usually fits" = breaks exactly
+  when needed.
+- **Reliability outranks peak quality — this is the tie-breaker D-3 needed.**
+  A 3B that always runs beats a 7B that OOMs mid-video. An arm that needs an
+  idle desktop has not passed. Recorded on D-3 so it is not re-argued per arm.
+  Combined with the marginality finding below, this leans against 7B @ Q4
+  unless P1b's iGPU path is available.
+- **Efficiency puts the two-stage architecture on trial.** Two forward passes
+  plus a transition per request, in a budget that would hold one model doing
+  it directly. **G2 is promoted from sanity check to the experiment that
+  decides whether the architecture survives.** A one-stage win retires most of
+  Phase B, Phase E and the D-2 machinery — much cheaper to learn before the
+  fine-tunes than after Phase E. Run it first.
+- **New F5 — offline acceptance test.** "Runs locally" and "works during an
+  outage" are different claims; the phase previously ended at a latency
+  number a networked machine can pass while still depending on the network.
+  F5 disables networking and requires the loop to close: no runtime hub reads
+  (`HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`, local GGUFs), llama.cpp prebuilt,
+  eval harness still scoring, **and the target libraries installed with a
+  wheel cache** — generated code that imports something absent is worthless
+  offline. That last point upgrades C2 from eval hygiene to a product
+  requirement: the library surface the model emits must match what is
+  installed.
+
 ## 2026-08-27 — mega_plan review: the budget varies, and 7B @ Q4 is marginal
 
 Correction to the Fedora entry below. That revision quoted ~5.9 GB headless as

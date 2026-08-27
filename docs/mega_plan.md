@@ -16,6 +16,35 @@ Two-stage Planner -> Coder pipeline that runs **entirely on one RTX 2060,
 6GB VRAM**, doing Python-only coding tasks. Training happens on Colab
 (A100/L4); only inference has to fit the 2060.
 
+### Why local, and what that changes
+
+The point is not that a 2060 is what's available. It is **offline
+resilience**: maximum useful work per GB of a small GPU, so that losing
+internet does not stop the work. That rationale is not decoration — it
+settles arguments the rest of this document would otherwise leave open.
+
+- **There is no fallback when it matters.** A hosted model is not a backstop
+  for a local one that fails during an outage; the outage is exactly when the
+  backstop is gone. So a configuration that usually fits is not "mostly
+  fine", it is a system that breaks precisely when it is needed.
+- **Therefore reliability outranks peak quality.** Where the two conflict —
+  and the headroom arithmetic below shows they do — **take the headroom.** A
+  3B that always runs beats a 7B that OOMs when a video is playing. This is
+  the tie-breaker for D-3 and it should not have to be re-argued per arm.
+- **Efficiency puts the two-stage architecture on trial.** Two stages means
+  two forward passes and a stage transition to answer one question, in a
+  budget that would hold one model doing it directly. That is a real
+  efficiency cost, and it is the case Gate 1's **G2** exists to test. The
+  hypothesis that justifies paying it: a small model may do English -> plan
+  and plan -> code as two easy problems better than one hard problem. If G2
+  says otherwise, the honest move for this goal is one model, not two.
+- **The deliverable is code you can actually run offline.** Generated code
+  that imports something not installed, or that fetches a URL, is worthless
+  during an outage. This turns C2's "write runnable examples — no network, no
+  missing fixtures" from eval hygiene into a **product requirement**: the
+  library surface the model is trained to emit has to match what is installed
+  on the machine. See F5.
+
 ### The VRAM budget is the whole design
 
 6144 MiB total. What is left after the desktop depends on the host OS and on
@@ -210,7 +239,9 @@ implementation step quietly settle one.
   pseudocode -> correct pandas/tkinter/requests code is the hard half and can
   take the whole ~5 GB. Note the tension with D-2: picking different families
   per stage forecloses the shared-base option and forces the process swap.
-  Decided by step D3.
+  **Tie-breaker, per §0: when quality and headroom conflict, take the
+  headroom.** An arm that needs an idle desktop has not passed. Decided by
+  step D3.
 - **D-4 — Where reasoning lives.** Planner, Coder, both, or neither.
   Argument for the Coder: English -> a handful of known verbs is the easy
   half; pseudocode -> correct pandas/tkinter/requests code is the hard half.
@@ -507,6 +538,14 @@ forward passes plus a swap. Score both, and record the wall clock alongside
 the quality number — a two-stage win that costs 4x the latency is a different
 result from one that costs 2x.
 
+**Under the efficiency goal (§0) this is the experiment that decides whether
+the project's architecture survives**, not merely a sanity check. Two stages
+is a real cost paid per request, in a budget that would hold one model doing
+the job directly. Run G2 before spending Colab hours on either fine-tune. If
+one stage wins, the plan is one model, and most of Phases B, E and the D-2
+machinery stop being necessary — a much cheaper outcome to discover now than
+after Phase E.
+
 ---
 
 ## Phase D — Base model bake-off (user, Colab)
@@ -633,8 +672,29 @@ Not on Colab, and under the display configuration P1b settled. Record:
   is the step that catches a configuration sized against an idle reading, and
   it is the one that decides whether the chosen arm actually ships.
 
-**Done when:** the full pipeline answers a held-out task on the 2060, within
-the measured VRAM budget, at a latency you will actually tolerate.
+### F5. Verify it actually works offline
+The goal is offline resilience, so the acceptance test is an outage, not a
+benchmark. Disable networking (`nmcli networking off`) and confirm the whole
+loop still closes:
+
+- **No runtime downloads.** GGUFs on local disk; `HF_HUB_OFFLINE=1` and
+  `TRANSFORMERS_OFFLINE=1` set, so nothing silently reaches for the hub. A
+  `from_pretrained` that works only because the hub is up is a latent failure.
+- **llama.cpp already built and installed**, not compiled on demand.
+- **The target libraries already installed** in the environment the generated
+  code runs in — pandas, numpy, sklearn, torch, requests, tkinter, whatever
+  the DSL verbs imply. Keep a wheel cache so a fresh venv is possible offline.
+  This is the half of "it works offline" that is about the *output* rather
+  than the model, and it is the half that is easy to forget.
+- **The eval harness runs offline** (it already does — `src/eval/` is local),
+  so you can still score changes during an outage.
+
+**Done when:** with networking disabled, an English task goes to final Python
+and that Python executes.
+
+**Done when (phase):** the full pipeline answers a held-out task on the 2060,
+within the measured VRAM budget, at a latency you will actually tolerate,
+with the desktop in normal use and the network down.
 
 ---
 

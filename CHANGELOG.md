@@ -10,6 +10,41 @@ transcripts; see those for full detail behind any entry here.
 
 ### Changed
 
+- **`docs/mega_plan.md` — the rationale behind the 6GB target is now written
+  down, because it settles arguments the plan was leaving open.** The
+  constraint was recorded ("runs entirely on one RTX 2060") without the reason
+  for it: **offline resilience** — maximum useful work per GB of a small GPU,
+  so an internet outage does not stop the work. Stated, it decides three
+  things that were otherwise going to be re-argued. (1) **There is no fallback
+  when it matters** — a hosted model is not a backstop for a local one during
+  the outage that removes it — so a configuration that *usually* fits is a
+  system that breaks exactly when needed. (2) **Reliability therefore outranks
+  peak quality**, which is the tie-breaker the headroom arithmetic needed: a
+  3B that always runs beats a 7B that OOMs mid-video, and an arm requiring an
+  idle desktop has not passed. Recorded on D-3 so it is not re-litigated per
+  arm. (3) **Efficiency puts the two-stage architecture itself on trial** —
+  two forward passes and a transition per request, inside a budget that would
+  hold one model answering directly. G2 was accordingly promoted from sanity
+  check to the experiment that decides whether the architecture survives, with
+  a note that a one-stage win retires most of Phase B, Phase E and the D-2
+  machinery, and that discovering it before the fine-tunes is far cheaper than
+  after Phase E.
+- **`docs/mega_plan.md` — added F5, an offline acceptance test, because
+  "runs locally" and "works during an outage" are not the same claim.** The
+  phase previously ended at a latency measurement, which a machine with a
+  live network can pass while still depending on it. F5 disables networking
+  and requires the whole loop to close: no runtime hub reads
+  (`HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`, GGUFs on local disk — a
+  `from_pretrained` that works only because the hub is up is a latent
+  failure), llama.cpp already built, and the eval harness still scoring. The
+  non-obvious half is about the *output* rather than the model: generated code
+  that imports an uninstalled library is worthless during an outage, so the
+  target libraries must be present with a wheel cache behind them. That also
+  upgrades C2's "write runnable examples — no network, no missing fixtures"
+  from eval hygiene to a product requirement, since the library surface the
+  model emits has to match what is installed on the machine.
+
+
 - **`docs/mega_plan.md` — the budget now assumes the machine is in normal use
   while the model runs, and treats VRAM as varying rather than fixed.** The
   Fedora revision earlier today quoted ~5.9 GB headless as if that were the

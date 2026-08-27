@@ -187,3 +187,6 @@ I want to review mega_plan.md. My first issue: the plan said I can’t run plann
 
 2026-08-27T22:24:08Z [claude-code-web]
 One thing, these fixes assume I am going for maximum GPU use reduction before running. But when I use the model, I am just going to be using my computer as normal.
+
+2026-08-27T22:27:08Z [claude-code-web]
+My rationale is that I am looking for maximum efficiency on a small GPU, that way even when I lose internet I can keep working.
