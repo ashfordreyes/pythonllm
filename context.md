@@ -13,6 +13,31 @@ top. Periodically fold anything durable into `CLAUDE.md` and prune this file.
 
 ---
 
+## 2026-08-27 — Colab chat console (`src/ui/`)
+
+- **The Stage 2 notebook still doesn't exist**, and `docs/colab_setup.md`
+  referred to `03_stage2_finetune.ipynb` in §8/§9 as if it did. Fixed the doc
+  (scope note + what writing 03 would involve). The one non-obvious part
+  recorded there: the Coder gets **no DSL special tokens** — it reads the plan
+  as ordinary text, and only the Planner has to *emit* `<PLAN>`/`<STEP>` as
+  single tokens, so notebook 03 skips notebook 02's section 3 entirely.
+- **`src/ui/console.py` renders, it does not own a model.** It takes
+  `plan_fn`/`code_fn` callables, which is what lets it ship before the Coder
+  exists and be exercised with stubs on a CPU runtime. Keeping torch,
+  transformers and ipywidgets out of module scope is part of the same
+  decision — `ui.console` has to import off a GPU runtime or the layout can't
+  be tested without burning compute units.
+- **Streaming is the reason `src/ui/generate.py` exists** rather than reusing
+  notebook 04's `generate_plan` verbatim: eval wants one final string, a chat
+  UI wants tokens as they arrive. Same chat template and
+  `skip_special_tokens=False` otherwise. If notebook 04 ever grows a shared
+  helper, that's the function to converge on.
+- **Open question:** the coder system prompt in `generate.py`
+  (`CODER_SYSTEM_PROMPT`) is a guess — whatever notebook 03 actually trains
+  with must replace it, or the console will prompt the Coder differently than
+  it was tuned. Worth pinning both stages' prompts in one module once 03 is
+  written.
+
 ## 2026-08-27 — Held-out split + layered eval scoring + PNG charts
 
 Closed the last two `docs/next_fixes.md` items together, since neither is
