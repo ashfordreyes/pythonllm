@@ -8,6 +8,51 @@ transcripts; see those for full detail behind any entry here.
 
 ## 2026-08-27
 
+### Changed
+
+- **`docs/mega_plan.md` — two premises corrected in review: the stages run
+  sequentially, and the host is Fedora 44, not Windows.** The plan as written
+  costed the Planner and the Coder as if both had to be VRAM-resident at
+  once, which made "two separate 7B models do not fit (~9.4GB at Q4)" a wall
+  and made the shared-base/LoRA question a fit requirement. That is not the
+  intended design: the Planner emits a plan, the plan is handed to the Coder
+  as a prompt, the Coder emits the code — one model at a time. Corrected
+  through §0 and D-2/D-3, with three consequences that change what the later
+  phases measure. (1) The budget is *per stage*, not shared, so the
+  params x bit-width point (D-3) is now two decisions and they may differ — a
+  small Planner with a full-budget Coder is legal, and 7B @ Q5_K_M (~5.4GB)
+  becomes reachable for the Coder alone. (2) D-2 stops being "does it fit"
+  and becomes "what does the handoff cost": shared base + hot-swapped
+  adapters (milliseconds) preferred, `llama-swap`-style process swap as the
+  fallback that makes the design safe. The old "5-20s stall" figure was
+  corrected to ~1-3s — for GGUF with the weights page-cached, the swap is a
+  PCIe-bound copy, not a disk read — which is why the fallback is tolerable
+  and why the model choice should not be bent to avoid it. (3) The binding
+  resource moves from VRAM to system RAM, since the swap is only cheap while
+  both GGUFs stay in the page cache; new step P4 records RAM, disk and disk
+  type so the fallback's viability is known before Phase D depends on it.
+  What did *not* change: no 12B still fits (7.3GB at Q4 against ~5.9GB even
+  headless), so distillation remains the only path.
+- **`docs/mega_plan.md` — Fedora-specific VRAM and setup facts replace the
+  Windows assumptions.** The ~4.8-5.4GB budget was derived from a Windows
+  desktop's 0.6-1.0GB overhead. A GNOME/Wayland session on the card costs
+  roughly 0.3-0.6GB, and dropping to `multi-user.target` or moving the
+  display to an iGPU costs it nothing — so the working figures are now
+  ~5.3-5.6GB with a desktop and ~5.9GB headless, and P1 was rewritten to take
+  three readings rather than one because the gap between them is what decides
+  whether the new P1b (headless vs iGPU vs desktop) is worth doing. Recorded
+  alongside: Linux CUDA has no WDDM VRAM oversubscription, so an over-budget
+  configuration OOMs loudly instead of silently spilling to system RAM at
+  5-10x the latency — worth more to this project than the 0.3GB, since its
+  whole method is finding where the budget breaks. Also corrected a claim
+  that would have mis-sized the KV cache: the sm_80 requirement belongs to
+  the `flash-attn` PyTorch package, not to llama.cpp's own `--flash-attn`,
+  which has kernels for older architectures and is expected to run on Turing.
+  Gate 1's one-stage baseline (G2) was tightened at the same time — it now
+  gets the full budget and pays no transition cost, so the two-stage pipeline
+  has a higher bar to clear and the comparison must record wall clock next to
+  the quality number.
+
 ### Added
 
 - **`docs/mega_plan.md` — the first document that states the deployment

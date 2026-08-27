@@ -18,9 +18,16 @@ Two-stage Planner -> Coder pipeline that runs **entirely on one RTX 2060,
 
 ### The VRAM budget is the whole design
 
-6144 MiB total. A Windows desktop consumes 0.6-1.0 GB, so the real budget is
-**~4.8-5.4 GB** for weights + KV cache + activations, for *both* stages
-together.
+6144 MiB total. What is left after the desktop depends on the host OS, and
+that is now a Fedora 44 question rather than a Windows one — see "Host OS"
+below. Working figures: **~5.3-5.6 GB** with a normal Fedora/Wayland desktop
+up, **~5.9 GB** headless or with the display driven by an iGPU.
+
+**The stages run sequentially, so that budget is per stage, not shared.**
+The Planner produces a plan, the process (or adapter) hands it to the Coder,
+the Coder produces the code. At no point do both sets of weights need to be
+resident. This is the intended design and the rest of the document is written
+around it; see D-2 for what it costs.
 
 | Params | fp16 | Q8_0 | Q5_K_M | Q4_K_M |
 |---|---|---|---|---|
@@ -32,15 +39,29 @@ together.
 
 Consequences that constrain every step below:
 
-- **No 12B model fits at any usable quantization.** Distillation to a smaller
-  student is the only path, not one option among several.
-- **"High bit-width" caps model size.** True fp16 caps you near 2B params; Q8
-  caps you near 4B. "High bits AND large model AND 6GB" is arithmetically
+- **No 12B model fits at any usable quantization.** 12B @ Q4_K_M is ~7.3 GB
+  against ~5.9 GB headless, and that is before KV cache. Sequential execution
+  does not rescue this — the ceiling is one model at a time, not one model
+  per half-turn. Distillation to a smaller student is still the only path,
+  not one option among several.
+- **"High bit-width" caps model size.** True fp16 caps you near 2-3B params;
+  Q8 caps you near 4-5B. "High bits AND large model AND 6GB" is arithmetically
   impossible — the real question is where to sit on the params x bit-width
   curve, and that is an empirical question (step D3).
-- **Two separate 7B models do not fit** (~9.4 GB at Q4). Either the stages
-  share one base with hot-swapped LoRA adapters, or the Planner runs on CPU,
-  or the pipeline does not fit at all. See decision D-2.
+- **Two separate 7B models do not need to co-reside** (~9.4 GB at Q4, which
+  would not fit). Because the stages are sequential they never have to. What
+  the pipeline actually needs is one ~5 GB slot reused twice per request. The
+  open question is therefore *how* the swap happens, not *whether* the
+  pipeline fits. See decision D-2.
+- **Each stage gets the full budget.** This is the main consequence of the
+  sequential design and it changes D-3: the params x bit-width point is
+  chosen per stage, not once for a shared 5 GB. A 7B @ Q4_K_M Coder and a
+  1.5B @ fp16 Planner is a legal configuration, and so is 7B @ Q5_K_M
+  (~5.4 GB) for the Coder alone if the host is headless.
+- **The binding resource moves from VRAM to system RAM and disk.** Two GGUFs
+  are ~9.4 GB on disk, and the swap is only cheap if both stay in the page
+  cache. Budget 16 GB of system RAM as a floor, 32 GB to be comfortable. See
+  P4.
 
 ### Hardware facts about the target card
 
@@ -48,13 +69,50 @@ The RTX 2060 is Turing, compute capability sm_75:
 
 - **No bf16.** Train in bf16 on the A100; that is fine, it only affects the
   training host.
-- **FlashAttention-2 requires Ampere (sm_80+) and will not run.**
+- **The `flash-attn` package (FlashAttention-2) requires Ampere (sm_80+) and
+  will not run.** This is a statement about that PyTorch package only.
+  llama.cpp's `--flash-attn` is a separate implementation with kernels for
+  older architectures and is expected to work on Turing — confirm on the card
+  rather than inheriting the sm_80 claim, because it affects KV-cache size.
 - bitsandbytes 4-bit works but is slow on Turing. The deployment path should
   be **llama.cpp / GGUF** or ExLlamaV2, both of which are good on sm_75.
 - Memory bandwidth ~336 GB/s, so decode speed is roughly bandwidth over model
   size: a 3.3 GB Q8 model lands around 60-80 tok/s, a 4.7 GB Q4 7B around
-  45-60 tok/s. Two-stage inference pays that cost twice per request, which is
-  an accepted trade.
+  45-60 tok/s. Two-stage inference pays that cost twice per request, plus
+  whatever the stage transition costs (D-2), which is an accepted trade.
+
+### Host OS: Fedora 44, not Windows
+
+The target host is Fedora 44. This is a real advantage over the Windows
+baseline the first draft assumed, but the size of it depends on how the
+desktop is configured, and one of the differences matters more for
+*measurement* than for capacity.
+
+- **A GNOME/Wayland session on the 2060 costs roughly 0.3-0.6 GB of VRAM**,
+  against 0.6-1.0 GB for a Windows desktop. Call it ~0.3 GB recovered for
+  free, and note that a browser with hardware acceleration on can eat more
+  than the compositor does — the measurement in P1 has to be taken with
+  whatever you actually keep open.
+- **Headless is available, and it is the big win.** Dropping to
+  `multi-user.target` leaves the card at tens of MiB, i.e. ~5.9 GB usable.
+  Since the pipeline's front end is a console UI (`src/ui/`), running the
+  model host headless over SSH or on a spare TTY is not a contrivance.
+- **An iGPU is the same win without the cost.** If the CPU has integrated
+  graphics, set it primary in the BIOS and plug the monitor into the
+  motherboard; the desktop then costs the 2060 nothing and you keep a full
+  session. Prefer this if the hardware allows it.
+- **No WDDM VRAM oversubscription.** Windows will silently spill VRAM to
+  system RAM under pressure, which turns an over-budget configuration into a
+  mysterious 5-10x slowdown instead of an error. The CUDA path on Linux
+  fails loudly with an OOM instead. For a project whose entire method is
+  measuring where the budget breaks, failing loudly is worth more than the
+  0.3 GB.
+- **Setup cost, to expect once:** the NVIDIA driver comes from RPM Fusion
+  (`akmod-nvidia` + `xorg-x11-drv-nvidia-cuda`), and with Secure Boot on you
+  must sign the kernel module and enroll the key (MOK) or the driver will not
+  load after a kernel update. llama.cpp's CUDA build is also markedly less
+  troublesome on Linux than on Windows, which is a second, smaller reason
+  this move helps.
 
 ---
 
@@ -66,16 +124,42 @@ implementation step quietly settle one.
 - **D-1 — Plan format.** Current `<PLAN>/<STEP>` DSL, or Python-comment
   rendering. Phase A makes this a flag so it can be measured rather than
   guessed. Decided by Gate 1 / step D3.
-- **D-2 — Shared base model.** If the Planner and Coder share one base, one
-  weight set plus two ~100 MB LoRA adapters fits in 6GB and adapters swap in
-  milliseconds. If they do not, the pipeline needs sequential load/unload
-  (5-20 s stall per turn) or a CPU-resident Planner. Decided by step D3.
-- **D-3 — Params vs bit-width.** 7B @ Q4_K_M vs 3B @ Q8_0 vs 1.5B @ fp16.
-  The literature genuinely disagrees in this regime: Dettmers & Zettlemoyer
-  (arXiv 2212.09720) put 4-bit on the Pareto frontier for a fixed memory
-  budget, while "Not All Bits Are Equal" (arXiv 2510.10964) finds that below
-  ~8B, higher-precision weights win on reasoning-heavy tasks. Measure on our
-  own task. Decided by step D3.
+- **D-2 — How the stage transition happens.** Reframed: the stages run
+  sequentially, so this is no longer "does the pipeline fit" but "what does
+  the handoff cost". Three mechanisms, cheapest first:
+  1. **One shared base + two LoRA adapters.** ~4.7 GB of weights resident
+     plus two ~100 MB adapters; llama.cpp can hold both adapters loaded and
+     switch which one is active per request, so the transition is
+     milliseconds and nothing reloads. Requires that a single base serves
+     both stages well — which is what B1 (dropping the DSL special tokens,
+     so the Planner uses a stock tokenizer) unblocks.
+  2. **Process swap.** Kill the Planner server, start the Coder server;
+     `llama-swap` in front of them does this behind one OpenAI-compatible
+     endpoint. The old "5-20 s stall" figure was pessimistic for GGUF: with
+     the weights hot in the page cache the copy to VRAM is a
+     PCIe-bandwidth-bound transfer, so expect **~1-3 s** per swap on a
+     PCIe 3.0 x16 slot and worse only on a cold cache. Two swaps per request
+     if you swap back.
+  3. **CPU-resident Planner.** Only if a big Planner turns out to be
+     necessary; the sequential design mostly removes the reason to consider
+     it.
+  Preference is 1, with 2 as the fallback that makes the design safe — the
+  pipeline works either way, which is the point of writing the sequential
+  assumption down. What is *not* free about 2: it costs seconds per turn, and
+  it costs page cache (P4). Decided by step D3, measured by F4.
+- **D-3 — Params vs bit-width, chosen per stage.** 7B @ Q4_K_M vs 3B @ Q8_0
+  vs 1.5B @ fp16. The literature genuinely disagrees in this regime:
+  Dettmers & Zettlemoyer (arXiv 2212.09720) put 4-bit on the Pareto frontier
+  for a fixed memory budget, while "Not All Bits Are Equal"
+  (arXiv 2510.10964) finds that below ~8B, higher-precision weights win on
+  reasoning-heavy tasks. Measure on our own task.
+  Because the stages are sequential, this is **two decisions, not one**, and
+  they can differ. The asymmetry worth testing explicitly: English -> a short
+  list of known verbs is the easy half and may be served by a 1.5B, while
+  pseudocode -> correct pandas/tkinter/requests code is the hard half and can
+  take the whole ~5 GB. Note the tension with D-2: picking different families
+  per stage forecloses the shared-base option and forces the process swap.
+  Decided by step D3.
 - **D-4 — Where reasoning lives.** Planner, Coder, both, or neither.
   Argument for the Coder: English -> a handful of known verbs is the easy
   half; pseudocode -> correct pandas/tkinter/requests code is the hard half.
@@ -113,12 +197,30 @@ past it is committing to unmeasured assumptions.
 
 ## Phase P — Prerequisites
 
-### P1. Measure the real free VRAM on the 2060
-Run `nvidia-smi` on the target machine with the desktop up, as it will be in
-normal use. Record the actual free figure in `context.md`. Every budget in
-this document is an estimate until this number exists.
+### P1. Measure the real free VRAM on the 2060, under Fedora
+Every budget in this document is an estimate until these numbers exist. Take
+**three** readings with `nvidia-smi --query-gpu=memory.used,memory.total
+--format=csv`, because the gap between them is what decides whether the
+headless/iGPU work in P1b is worth doing:
 
-**Done when:** a measured MiB figure is in `context.md`.
+1. Full desktop, with whatever you normally keep open (browser included —
+   hardware-accelerated Firefox can cost more than GNOME Shell does).
+2. Desktop with the browser closed.
+3. Headless: `sudo systemctl isolate multi-user.target`, then read it over
+   SSH or on the TTY.
+
+**Done when:** three measured MiB figures are in `context.md`.
+
+### P1b. Decide how the display is driven
+If the CPU has integrated graphics (`lspci | grep -i vga` will show it), make
+it primary in the BIOS and move the monitor cable to the motherboard — that
+buys reading 3's budget while keeping a full desktop, and it is a one-time
+BIOS change. Otherwise decide between running the model host headless and
+accepting reading 1. Either way, whichever configuration you pick is the one
+every later measurement (D, F4) must be taken under.
+
+**Done when:** the chosen configuration is recorded in `context.md`, and the
+budget figure used by Phase D/F is the one that matches it.
 
 ### P2. Resolve the teacher model (D-5)
 Confirm whether `projectj/Instinct-Python-Coder-Gemma4-12B-KimiK3` exists and
@@ -145,6 +247,17 @@ check earns its keep.
 
 **Done when:** a push runs `python scripts/check_data.py` and fails the build
 on a non-zero exit.
+
+### P4. Record system RAM and free disk
+Only relevant because the design is sequential. If D-2 lands on the process
+swap, the swap is fast only while both GGUFs sit in the page cache; if they
+do not, every stage transition re-reads gigabytes from disk. `free -h` and
+`df -h` on the target, into `context.md`. 16 GB of RAM is the floor for two
+~4.7 GB models plus the OS, 32 GB is comfortable. Note the disk type too —
+NVMe vs SATA SSD changes the cold-cache number by several seconds.
+
+**Done when:** RAM, free disk and disk type are in `context.md`, with a note
+on whether the process-swap fallback is viable on this machine.
 
 ---
 
@@ -313,9 +426,16 @@ than teaching it from 40 examples.
 
 ### G2. Run the one-stage baseline
 One `Qwen2.5-Coder-7B-Instruct` @ Q4_K_M doing English -> Python directly, in
-the same 5 GB. **If the two-stage pipeline does not beat this, the
+the same budget. **If the two-stage pipeline does not beat this, the
 architecture is not earning its complexity.** This is the most important
 single experiment in the document and it is cheap.
+
+The sequential design raises this bar rather than lowering it. The one-stage
+baseline gets the full ~5 GB *and* pays no stage-transition cost, so the
+two-stage pipeline now has to beat it on quality by enough to justify two
+forward passes plus a swap. Score both, and record the wall clock alongside
+the quality number — a two-stage win that costs 4x the latency is a different
+result from one that costs 2x.
 
 ---
 
@@ -325,15 +445,30 @@ single experiment in the document and it is cheap.
 Score what ships. An fp16 A100 number does not predict Q4 behavior on a 2060.
 
 ### D2. Arms
+Score every arm **on both stages separately**, since the sequential design
+lets the two stages pick different points (D-3).
+
 - `Qwen2.5-Coder-7B-Instruct` @ Q4_K_M (~4.7 GB) — current baseline
+- `Qwen2.5-Coder-7B-Instruct` @ Q5_K_M (~5.4 GB) — only legal headless/iGPU,
+  and only because the stages no longer share the budget. Include it if P1b
+  went that way; drop it if the desktop stays on the 2060.
 - `Qwen2.5-Coder-3B-Instruct` @ Q8_0 (~3.3 GB) — the "high bits" arm (license, P2)
 - `Qwen2.5-Coder-1.5B-Instruct` @ fp16 (~3.1 GB) — the true high-bits arm
 - a 4B (Gemma 4 4B or similar) @ Q6_K
 - the 12B teacher, unquantized — as a **ceiling**, not a candidate
 
 ### D3. Settle D-1, D-2, D-3 from the results
-Format, shared base, and the params/bit-width point all fall out of this
-table. Record the decision and the numbers behind it in `context.md`.
+Format, the stage-transition mechanism, and the params/bit-width point for
+each stage all fall out of this table. Record the decision and the numbers
+behind it in `context.md`.
+
+The question D-2 actually turns on: **does the best Planner arm and the best
+Coder arm share a base?** If the same family and size wins both, take the
+shared-base + adapters route and the transition is free. If a small Planner
+and a large Coder win, price the process swap (P4, F4) and decide whether the
+quality delta is worth seconds per turn. Do not let the elegance of shared
+adapters pick the models — the swap is a working fallback, which is exactly
+why it was worth writing the sequential assumption into the plan.
 
 ---
 
@@ -399,9 +534,18 @@ Calibrate on your own plan -> Python pairs, not a generic corpus. This is a
 free quality win at Q4 and it partially closes the gap the "high bits"
 instinct is worried about. Consider QAT if more is needed.
 
-### F4. Measure on the actual 2060
-Not on Colab. Weights + KV + activations against the P1 number, plus real
-tok/s for both stages and the adapter-swap latency if D-2 went that way.
+### F4. Measure on the actual 2060, under Fedora
+Not on Colab, and under the display configuration P1b settled. Record:
+
+- Peak VRAM (weights + KV + activations) for each stage separately, against
+  the P1 figure for that configuration.
+- Real tok/s for each stage, prompt processing and decode separately.
+- **The stage-transition cost**, whichever mechanism D-2 chose: adapter
+  switch latency, or process-swap latency measured both warm (page cache
+  primed) and cold (`echo 3 | sudo tee /proc/sys/vm/drop_caches` first). The
+  cold number is what a first run after boot actually feels like.
+- End-to-end wall clock for one English task -> final Python, which is the
+  only number that answers "will I tolerate this".
 
 **Done when:** the full pipeline answers a held-out task on the 2060, within
 the measured VRAM budget, at a latency you will actually tolerate.

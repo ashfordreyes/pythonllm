@@ -181,3 +181,6 @@ Before writing a plan, can all of this effectively be one plan that Sonnet 5 wor
 
 2026-08-27T18:39:42Z [claude-code-remote]
 Can you make a file in /docs/ called mega_plan.md with individual steps for implementing my goal?
+
+2026-08-27T18:48:10Z [claude-code-web]
+I want to review mega_plan.md. My first issue: the plan said I can’t run planner and coder at the same time, but I don’t intend to. I want to run Planner, it makes an output as a prompt, that prompt is given to coder, coder outputs final product. I am also using Fedora 44 instead of Windows, potentially less overhead?

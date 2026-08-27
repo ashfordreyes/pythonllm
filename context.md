@@ -13,6 +13,51 @@ top. Periodically fold anything durable into `CLAUDE.md` and prune this file.
 
 ---
 
+## 2026-08-27 — mega_plan review: sequential stages, Fedora host
+
+First review pass over `docs/mega_plan.md`. Two premises in it were wrong and
+both change what the later phases measure.
+
+- **The stages run sequentially. They never co-reside.** Planner emits a plan,
+  the plan goes to the Coder as a prompt, the Coder emits the code. The plan
+  had costed both models as simultaneously VRAM-resident, which made "two 7B
+  models are ~9.4GB at Q4 and do not fit" a wall. It is not one — the pipeline
+  needs one ~5GB slot reused twice per request.
+- **Consequence 1 — the budget is per stage.** D-3 (params vs bit-width) is
+  now two decisions and they may differ. A 1.5B Planner with a full-budget
+  Coder is legal; so is 7B @ Q5_K_M (~5.4GB) for the Coder alone.
+- **Consequence 2 — D-2 is reframed.** Not "does it fit" but "what does the
+  handoff cost". Shared base + hot-swapped LoRA adapters is milliseconds and
+  preferred; a `llama-swap`-style process swap is the fallback, and it is
+  cheaper than the plan claimed — ~1-3s page-cached, not 5-20s, because the
+  copy is PCIe-bound rather than a disk read. That the fallback works is what
+  keeps model choice free: do not pick a shared base only to avoid the swap.
+- **Consequence 3 — system RAM becomes the binding resource** if the swap
+  route wins, since it is only cheap while both GGUFs stay in the page cache.
+  New step P4 records RAM/disk/disk-type. 16GB floor, 32GB comfortable.
+- **Unchanged:** no 12B fits (7.3GB at Q4 vs ~5.9GB even headless), so
+  distillation remains the only path.
+- **The host is Fedora 44, not Windows.** Budget figures revised to
+  ~5.3-5.6GB with a GNOME/Wayland desktop on the card and ~5.9GB headless or
+  with the display on an iGPU. P1 now takes three readings instead of one and
+  new P1b picks the display configuration, because every later measurement has
+  to be taken under whichever one is chosen. Secondary Linux wins recorded: no
+  WDDM VRAM oversubscription (over-budget configs OOM loudly instead of
+  silently spilling at 5-10x latency), and an easier llama.cpp CUDA build.
+  Setup cost: RPM Fusion `akmod-nvidia`, plus MOK enrollment if Secure Boot is
+  on.
+- **Corrected fact:** the sm_80 FlashAttention requirement is about the
+  `flash-attn` PyTorch package. llama.cpp's `--flash-attn` is a separate
+  implementation expected to work on Turing — worth confirming on the card,
+  since it affects KV-cache size.
+
+**Open — for P1/P1b/P4, nobody but the user can answer:** measured free VRAM
+in all three display configurations; whether the CPU has an iGPU; system RAM,
+free disk and disk type.
+
+**Open — the review is not finished.** This pass covered §0, D-2, D-3, P1, P4,
+G2, D2/D3 and F4. Phases A-C, E and F have not been reviewed.
+
 ## 2026-08-27 — 6GB deployment target written down (`docs/mega_plan.md`)
 
 A research session on base-model selection surfaced that the project's actual
@@ -30,9 +75,11 @@ The parts that change how current work should be sequenced:
   format needs no tokenizer surgery, which retires the machinery behind three
   recorded defects (the shrinking `resize_token_embeddings`, the untrained
   embedding rows, the 4.3GB artifact) *and* is the precondition for the two
-  stages sharing one base with hot-swapped LoRA adapters. Two separate 7B
-  models are ~9.4GB at Q4 and do not fit; one base plus two ~100MB adapters
-  does.
+  stages sharing one base with hot-swapped LoRA adapters. **Superseded in part
+  by the review entry above:** the stages run sequentially and never
+  co-reside, so the shared base is a latency optimization, not a fit
+  requirement. Dropping the special tokens is still load-bearing for the three
+  defects, and still what unblocks the adapter route.
 - **The eval cannot currently settle anything.** `scripts/check_data.py` now
   reports 3/50 references running cleanly with 1 held out (not the 4/50-and-
   none-held-out in the entry below: stratification fixed the held-out half,
