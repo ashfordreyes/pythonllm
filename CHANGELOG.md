@@ -10,6 +10,46 @@ transcripts; see those for full detail behind any entry here.
 
 ### Added
 
+- **`docs/mega_plan.md` — the first document that states the deployment
+  target end to end.** Written out of a research/critique session on whether
+  `projectj/Instinct-Python-Coder-Gemma4-12B-KimiK3` (a 12B Python coder
+  fine-tune) could be distilled to run on the project's real target, an RTX
+  2060 with 6GB VRAM. Existing docs cover the next fix or the next notebook;
+  nothing recorded the constraint the whole design answers to, so each session
+  re-derived the VRAM arithmetic from scratch. The document exists mainly to
+  stop three things from being re-argued: that no 12B fits at any usable
+  quantization (Q4_K_M is ~7.3GB against a ~4.8-5.4GB real budget, so
+  distillation is the only path, not one option); that "high bit-width" caps
+  model size rather than being a free choice (fp16 caps near 2B params, Q8
+  near 4B); and that two separate 7B stages do not fit at all (~9.4GB at Q4),
+  which is what makes the shared-base/LoRA-hot-swap question load-bearing
+  rather than an optimization.
+
+  Structured as phases P/A/B/C/D/E/F with a **hard boundary drawn between
+  Phase B and Gate 1** — everything up to B is CPU-verifiable in this repo,
+  everything after needs a GPU and produces the measurements that decide the
+  architecture. The boundary is stated explicitly because the failure mode it
+  guards against is an agent running past it and committing to unmeasured
+  assumptions. For the same reason §1 lists five open decisions (D-1..D-5) as
+  explicitly *not* prejudged, each naming the step that settles it.
+
+  Two things in it are corrections to earlier reasoning in the same session
+  rather than new plans. Gate 1 as originally sketched is underpowered: it
+  would compare two plan formats on 10 held-out examples with the execution
+  tier reporting "not attempted" (per `context.md`, only 4 of 50 references
+  run cleanly), which yields noise, so Phase C now exists as a prerequisite.
+  And D-5 records that the teacher model the session was premised on **could
+  not be verified to exist** — no search hit, and huggingface.co was blocked
+  by the session's egress proxy — so it is flagged for resolution in step P2
+  instead of being built on.
+
+  Phase A's core decision is that the plan format is a *rendering* of the DSL
+  schema, not a replacement for it: keeping `VERBS` and the ordered step list
+  canonical, and making `<PLAN>/<STEP>` vs Python-comment output a flag, turns
+  the format question into something measurable in one line instead of a repo
+  fork, and preserves `validate_plan`, `score_plan`'s `verb_sequence_match`,
+  `classify_plan_error` and `scripts/check_data.py` unchanged.
+
 - **`notebooks/03_stage2_finetune.ipynb` — the Coder QLoRA fine-tune.**
   Planned with a subagent-assisted session that read `context.md`,
   `docs/colab_setup.md` §9, `src/dsl/schema.py`, `src/eval/scoring.py`,
