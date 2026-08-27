@@ -249,6 +249,14 @@ saves both to `FINAL_DIR`), not a fresh one from the hub.
 runtime-local `OUTPUT_DIR` are gone with the runtime; point it at Drive (§4)
 if you expect interruptions.
 
+**`AttributeError` from deep inside `transformers/tokenization_utils_base.py`
+in section 10, tracing back to a `KeyError: 'shape'`.** Version-dependent
+`apply_chat_template` behavior: without `return_dict` set explicitly, some
+`transformers` versions return a `BatchEncoding` instead of a raw tensor,
+and a `BatchEncoding` has no `.shape`. The notebook pins `return_dict=True`
+for this reason — if you hit this, you likely edited section 10 and dropped
+that argument.
+
 ## 8. Reusing the adapter later
 
 The saved directory is a LoRA adapter plus tokenizer, not a full model, so

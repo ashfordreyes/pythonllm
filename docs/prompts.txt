@@ -119,3 +119,43 @@ NameError: name 'model' is not defined. I also think colab_setup.md needs a revi
 
 2026-08-26T23:44:03Z [claude-code-terminal]
 Can you reconcile the divergent branches? I am sure both have important code, but I am not sure.
+
+2026-08-26T23:54:11Z [claude-code-terminal]
+Do not make any edits to the code, not even a prompt log right now. I am just curious how long the training will take. I just ran cell [11] which is the training cell. I am also curious how I can save my weights or whatever training produces. Will it be saved to the google drive folder that was mounted and created?
+
+2026-08-26T23:54:11Z [claude-code-terminal]
+Once I've got the weights saved, how do I test the model and see if it works how I want it to? Is it currently being fine-tuned like I want? Is there an existing notebook that will generate .png graphs for me to eval? I have only ever run evals on a vision model so this is a lot different. Once the weights exist I can run the model on local hardware by downloading the weights right? Where else should I upload my weights maybe weights & biases to save them? It is an open model after all.
+
+2026-08-26T23:54:11Z [claude-code-terminal]
+Can you add the context from this chat to the necessary files so I can make the eval png maker that I want and the other things we talked about?
+
+2026-08-26T23:56:53Z [claude-code-terminal]
+I got this error when I ran cell [16], can you implement the fix locally and also tell me what to put into colab before the runtime disconnects so I can save everything?: KeyError                                  Traceback (most recent call last)
+
+/usr/local/lib/python3.13/dist-packages/transformers/tokenization_utils_base.py in __getattr__(self, item)
+    286         try:
+--> 287             return self.data[item]
+    288         except KeyError:
+
+KeyError: 'shape'
+
+
+During handling of the above exception, another exception occurred:
+
+AttributeError                            Traceback (most recent call last)
+
+4 frames
+
+/usr/local/lib/python3.13/dist-packages/transformers/tokenization_utils_base.py in __getattr__(self, item)
+    287             return self.data[item]
+    288         except KeyError:
+--> 289             raise AttributeError
+    290 
+    291     def __getstate__(self):
+
+AttributeError: 
+
+2026-08-27T00:02:15Z [claude-code-terminal]
+Can I just not run it and nothing happens? but my model is saved in google drive?
+2026-08-27T00:03:46Z [claude-code-terminal] Edit no code, this is just a question. Should I save the weights to somewhere other than ONLY google drive? Should I use weights & biases, or some other hosting service? Save copies locally? What files from drive do I need to save?
+2026-08-27T00:04:48Z [claude-code-terminal] Create a file to /docs/ called "weight_saving.md" with these details for my use and future contributors/users use.
