@@ -8,6 +8,48 @@ transcripts; see those for full detail behind any entry here.
 
 ## 2026-08-27
 
+### Added
+
+- **An ASCII chat console for the two stages (`src/ui/`), plus
+  `docs/colab_console.md`.** Asked whether the Colab experience could look
+  like a CLI tool's box-drawn "almost-GUI" instead of raw `print()` output,
+  and whether that could appear beneath a single cell. It can: Colab renders
+  stdout as monospace and ipywidgets underneath it, so `src/ui/console.py`
+  draws titled panels for the task, the plan and the code, colors the DSL
+  special tokens/verbs/literals, syntax-highlights the Python with pygments,
+  and `Console.launch()` puts a text box and buttons under the cell.
+  - The console takes two *callables* (`plan_fn`, `code_fn`) rather than a
+    model, so it works with the Stage 1 adapter alone — the Coder does not
+    exist yet — and with stubs on a CPU runtime, which is how the padding and
+    wrapping were checked without spending compute units. It imports neither
+    torch nor ipywidgets at module level for the same reason.
+  - Generations stream. A 7B model on an L4 takes tens of seconds per answer
+    and a silent cell is indistinguishable from a hung one, so
+    `src/ui/generate.py` wraps `TextIteratorStreamer` and yields cumulative
+    snapshots that the console re-renders on. It keeps notebook 04's chat
+    template and `skip_special_tokens=False` so `<PLAN>`/`<STEP>` stay visible,
+    and strips the ``` fences a code-pretrained base tends to emit.
+  - Panel padding is computed from a visible length that ignores SGR escapes,
+    and text is wrapped *before* highlighting, because otherwise every colored
+    line pads short by the length of its escape codes and long lines split an
+    escape sequence across two rows. The palette is 256-color mid-tones: the
+    ends of the ramp read on one Colab theme and vanish on the other.
+  - A widget-free `Console.repl()` is the fallback, since Colab pins its own
+    widget manager and `pip install -U ipywidgets` is as likely to break
+    rendering as fix it.
+
+### Changed
+
+- **`docs/colab_setup.md` now says up front that it is Stage 1 only.** Asked
+  whether it explains how to get the notebook that trains the Coder — it does
+  not, and worse, §8/§9 referred to `03_stage2_finetune.ipynb` as though it
+  existed. It has never been written. Added a scope note in the intro, dropped
+  the stale "point `03_stage2_finetune.ipynb` at the Drive path" instruction,
+  and added a §9 subsection describing what writing it would involve (notebook
+  02's shape, `Qwen2.5-Coder-7B`, the stage 2 JSONL, and *no* DSL
+  special-token registration — only the Planner has to emit them as single
+  tokens).
+
 ### Changed (uncommitted at time of writing)
 
 - **Stratified the train/eval split so the execution-scoring tier stops

@@ -35,4 +35,10 @@ Drive mount, repo clone) in its own section 2, so Run all is the whole
 procedure; `docs/colab_setup.md` covers what to do before connecting to a
 runtime, GPU choice, and troubleshooting.
 
+Once an adapter exists, `docs/colab_console.md` covers `src/ui/console.py` —
+an ASCII-panel chat UI that runs in a Colab cell rather than a notebook of its
+own, so you can talk to the Planner (and the Coder, when `03` exists) without
+re-running an eval notebook. It takes a planner callable and a coder callable
+and works with either one missing.
+
 See the project plan for the full rationale and model/dataset choices.

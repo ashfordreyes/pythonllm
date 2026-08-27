@@ -16,6 +16,12 @@ you connect to a runtime (§1-2, free), which GPU to pick (§3), what survives
 a session ending (§4), how not to waste compute units (§6), and what to do
 when something breaks (§7).
 
+**Scope: Stage 1 only.** This file covers training the *Planner*. There is no
+Stage 2 notebook yet — `notebooks/03_stage2_finetune.ipynb` appears in
+`notebooks/README.md` and in §8/§9 below as the thing that will consume the
+Stage 1 adapter, but it has not been written, so nothing here tells you how to
+train the Coder. §9 says what does exist for Stage 2 today.
+
 ## Do this before you connect to a runtime
 
 Compute units are billed on GPU-connected wall time, so everything that can
@@ -294,9 +300,8 @@ so retraining is the better option.
 
 ## 9. Next steps
 
-With an adapter in Drive, download it or point `03_stage2_finetune.ipynb` /
-`04_eval_pipeline.ipynb` at the same Drive path to keep working across
-sessions.
+With an adapter in Drive, download it or point `04_eval_pipeline.ipynb` at the
+same Drive path to keep working across sessions.
 
 `04_eval_pipeline.ipynb` is the natural next run. Open it with
 `python scripts/colab_link.py notebooks/04_eval_pipeline.ipynb`; its
@@ -316,3 +321,24 @@ Scoring is layered rather than execution-only: plan well-formedness via
 parse/self-containment/execution via `src/eval/harness.py`. Only 4 of the 50
 reference snippets run in a bare runtime, so an execution-only score would
 rest on almost nothing; each tier reports its own denominator instead.
+
+### Stage 2 (the Coder)
+
+`03_stage2_finetune.ipynb` does not exist. Training the Coder means writing
+it first — the shape is notebook 02 with `Qwen2.5-Coder-7B` as the base,
+`data/stage2_coder/pseudotopython.jsonl` as the data, `pseudocode` as the
+prompt field and `python_code` as the completion, and **no DSL special-token
+registration** (the Coder reads the plan as ordinary text; only the Planner
+has to emit `<PLAN>`/`<STEP>` as single tokens). The split helper already
+hands back the same held-out rows for both files, so
+`load_split(STAGE2_DATA, ...)` under the same `SPLIT_SEED` needs no extra
+work. Section 7 of `04_eval_pipeline.ipynb` documents the eval side that
+turns on once a coder adapter exists.
+
+### A nicer way to use the models
+
+`docs/colab_console.md` covers `src/ui/console.py`: an ASCII-panel chat UI
+that runs in a Colab cell, with the plan and the code syntax-highlighted and
+streamed as they generate. It takes a planner callable and a coder callable,
+either of which may be absent — so it is usable with the Stage 1 adapter
+alone, today, and picks up the Coder when there is one.
