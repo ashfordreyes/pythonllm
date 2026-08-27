@@ -8,6 +8,158 @@ transcripts; see those for full detail behind any entry here.
 
 ## 2026-08-27
 
+### Changed
+
+- **`docs/mega_plan.md` — P1b resolved from the target machine's `lspci`: there
+  is no integrated GPU, which removes the recommended configuration and makes
+  the marginal case the deployment case.** The machine reports exactly one
+  display device (`NVIDIA Corporation TU104 [GeForce RTX 2060]`). The iGPU
+  path was the plan's recommendation precisely because it was the only option
+  that removed the desktop's VRAM variability without changing how the machine
+  is used; with no iGPU, the desktop stays on the 2060 during every run, the
+  deployment budget is P1's high-water figure minus headroom, and the 0.5 GB
+  reserve becomes mandatory rather than prudent since nothing else absorbs the
+  variation. Consequence for Phase D, recorded on the arms: on a 6 GB card
+  **7B @ Q4_K_M is no longer deployable** — ~5.2 GB all-in against a
+  ~4.8-5.2 GB varying budget, and §0's tie-breaker says take the headroom — so
+  it stays in the bake-off as the quality reference the smaller arms aim at,
+  and 7B @ Q5_K_M is dropped outright. Headless was already demoted to a
+  measurement tool and stays there.
+- **`docs/mega_plan.md` — added P1c, because `lspci` named a die that does not
+  match the card and every budget here derives from 6144 MiB.** The reported
+  die is **TU104**, which is RTX 2070 SUPER / 2080 / 2080 SUPER silicon; the
+  normal RTX 2060 die is TU106, and TU104 reaches 2060-class boards only as
+  late-run salvage. So the string is either a genuine TU104-salvage 6 GB 2060,
+  or a `pci.ids` mislabel of a different and possibly 8 GB card. That is worth
+  one command rather than an assumption: an 8 GB card moves the working budget
+  from ~4.8-5.2 GB to ~6.8-7.2 GB, puts 7B @ Q5_K_M back in range and changes
+  D-3's answer. Recorded that the Turing facts are unaffected either way —
+  TU104 and TU106 are both sm_75 — so no bf16, same GGUF path, similar
+  bandwidth.
+- **`docs/mega_plan.md` — P4 partially answered: the boot device is a
+  DRAM-less SN530-class NVMe, which the process-swap fallback survives.**
+  Recorded because "DRAM-less" reads worse than it is here: model loading is a
+  large sequential read, the pattern these drives handle acceptably (~2-2.5
+  GB/s, so a cold 4.7 GB GGUF is ~2-3 s), while the DRAM-less penalty lands on
+  random I/O and sustained writes. The operational conclusion is that the page
+  cache matters *more* on this hardware, since RAM is what keeps a stage swap
+  off the drive entirely — so the still-missing RAM figure is the part of P4
+  that actually gates D-2.
+
+
+- **`docs/mega_plan.md` — the rationale behind the 6GB target is now written
+  down, because it settles arguments the plan was leaving open.** The
+  constraint was recorded ("runs entirely on one RTX 2060") without the reason
+  for it: **offline resilience** — maximum useful work per GB of a small GPU,
+  so an internet outage does not stop the work. Stated, it decides three
+  things that were otherwise going to be re-argued. (1) **There is no fallback
+  when it matters** — a hosted model is not a backstop for a local one during
+  the outage that removes it — so a configuration that *usually* fits is a
+  system that breaks exactly when needed. (2) **Reliability therefore outranks
+  peak quality**, which is the tie-breaker the headroom arithmetic needed: a
+  3B that always runs beats a 7B that OOMs mid-video, and an arm requiring an
+  idle desktop has not passed. Recorded on D-3 so it is not re-litigated per
+  arm. (3) **Efficiency puts the two-stage architecture itself on trial** —
+  two forward passes and a transition per request, inside a budget that would
+  hold one model answering directly. G2 was accordingly promoted from sanity
+  check to the experiment that decides whether the architecture survives, with
+  a note that a one-stage win retires most of Phase B, Phase E and the D-2
+  machinery, and that discovering it before the fine-tunes is far cheaper than
+  after Phase E.
+- **`docs/mega_plan.md` — added F5, an offline acceptance test, because
+  "runs locally" and "works during an outage" are not the same claim.** The
+  phase previously ended at a latency measurement, which a machine with a
+  live network can pass while still depending on it. F5 disables networking
+  and requires the whole loop to close: no runtime hub reads
+  (`HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`, GGUFs on local disk — a
+  `from_pretrained` that works only because the hub is up is a latent
+  failure), llama.cpp already built, and the eval harness still scoring. The
+  non-obvious half is about the *output* rather than the model: generated code
+  that imports an uninstalled library is worthless during an outage, so the
+  target libraries must be present with a wheel cache behind them. That also
+  upgrades C2's "write runnable examples — no network, no missing fixtures"
+  from eval hygiene to a product requirement, since the library surface the
+  model emits has to match what is installed on the machine.
+
+
+- **`docs/mega_plan.md` — the budget now assumes the machine is in normal use
+  while the model runs, and treats VRAM as varying rather than fixed.** The
+  Fedora revision earlier today quoted ~5.9 GB headless as if that were the
+  operating figure and listed headless/iGPU as ways to "recover" VRAM. That
+  smuggled in an assumption the user does not hold: it implied clearing the
+  desktop before each run. The real case is browser open, editor open,
+  ordinary desktop, so the working budget drops to **~4.8-5.2 GB**. The
+  larger correction is qualitative — that budget *moves during the session*
+  as tabs open and video plays, so a configuration measured to fit will die
+  later under load. Sizing to the measured maximum is the wrong target;
+  sizing with headroom is the right one. Added an explicit headroom rule
+  (weights + KV + ~0.4 GB llama.cpp buffers, then leave >=0.5 GB unspent) and
+  the arithmetic it exposes: **7B @ Q4_K_M is ~5.2 GB all-in against a
+  ~4.8-5.2 GB varying budget — the current baseline arm has zero headroom and
+  is not the safe default the size table makes it look like.** Also noted the
+  flip side of the "Linux fails loudly" advantage recorded earlier: with the
+  desktop on the same card, an over-budget model can starve the compositor,
+  so the risk is the session, not just the run.
+- **`docs/mega_plan.md` — P1 now measures the desktop's high-water mark, and
+  P1b is re-ranked by what each option costs the user.** A single idle
+  `nvidia-smi` reading sizes the deployment too big, because the model has to
+  survive the worst moment while already loaded; P1 now samples over an hour
+  of ordinary use (`-l 5`, take the maximum, include full-screen video) and
+  keeps the browser-closed and headless readings only as references for
+  isolating where the VRAM goes. P1b was reordered: the **iGPU path is now
+  the recommendation** — it is the only option that changes nothing about how
+  the machine is used, and it removes the variability rather than just
+  recovering ~0.8 GB — while headless moved to last and is explicitly marked
+  not-a-deployment-configuration. Phase D follows: D1 scores against the
+  high-water budget minus headroom, 7B @ Q5_K_M is iGPU-path-only, 7B @ Q4_K_M
+  is flagged marginal, a 3B arm was added as the one with real headroom on an
+  unmodified desktop, and F4 gained a one-hour soak test under real use, which
+  is what catches a configuration sized against an idle reading.
+
+
+- **`docs/mega_plan.md` — two premises corrected in review: the stages run
+  sequentially, and the host is Fedora 44, not Windows.** The plan as written
+  costed the Planner and the Coder as if both had to be VRAM-resident at
+  once, which made "two separate 7B models do not fit (~9.4GB at Q4)" a wall
+  and made the shared-base/LoRA question a fit requirement. That is not the
+  intended design: the Planner emits a plan, the plan is handed to the Coder
+  as a prompt, the Coder emits the code — one model at a time. Corrected
+  through §0 and D-2/D-3, with three consequences that change what the later
+  phases measure. (1) The budget is *per stage*, not shared, so the
+  params x bit-width point (D-3) is now two decisions and they may differ — a
+  small Planner with a full-budget Coder is legal, and 7B @ Q5_K_M (~5.4GB)
+  becomes reachable for the Coder alone. (2) D-2 stops being "does it fit"
+  and becomes "what does the handoff cost": shared base + hot-swapped
+  adapters (milliseconds) preferred, `llama-swap`-style process swap as the
+  fallback that makes the design safe. The old "5-20s stall" figure was
+  corrected to ~1-3s — for GGUF with the weights page-cached, the swap is a
+  PCIe-bound copy, not a disk read — which is why the fallback is tolerable
+  and why the model choice should not be bent to avoid it. (3) The binding
+  resource moves from VRAM to system RAM, since the swap is only cheap while
+  both GGUFs stay in the page cache; new step P4 records RAM, disk and disk
+  type so the fallback's viability is known before Phase D depends on it.
+  What did *not* change: no 12B still fits (7.3GB at Q4 against ~5.9GB even
+  headless), so distillation remains the only path.
+- **`docs/mega_plan.md` — Fedora-specific VRAM and setup facts replace the
+  Windows assumptions.** The ~4.8-5.4GB budget was derived from a Windows
+  desktop's 0.6-1.0GB overhead. A GNOME/Wayland session on the card costs
+  roughly 0.3-0.6GB, and dropping to `multi-user.target` or moving the
+  display to an iGPU costs it nothing — so the working figures are now
+  ~5.3-5.6GB with a desktop and ~5.9GB headless, and P1 was rewritten to take
+  three readings rather than one because the gap between them is what decides
+  whether the new P1b (headless vs iGPU vs desktop) is worth doing. Recorded
+  alongside: Linux CUDA has no WDDM VRAM oversubscription, so an over-budget
+  configuration OOMs loudly instead of silently spilling to system RAM at
+  5-10x the latency — worth more to this project than the 0.3GB, since its
+  whole method is finding where the budget breaks. Also corrected a claim
+  that would have mis-sized the KV cache: the sm_80 requirement belongs to
+  the `flash-attn` PyTorch package, not to llama.cpp's own `--flash-attn`,
+  which has kernels for older architectures and is expected to run on Turing.
+  Gate 1's one-stage baseline (G2) was tightened at the same time — it now
+  gets the full budget and pays no transition cost, so the two-stage pipeline
+  has a higher bar to clear and the comparison must record wall clock next to
+  the quality number.
+
 ### Added
 
 - **`docs/mega_plan.md` — the first document that states the deployment
