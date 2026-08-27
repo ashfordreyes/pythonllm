@@ -89,11 +89,45 @@ plan validity, verb sequence, exact match, code parse, self-containment,
 execution — each tier with its own denominator, so a chart says "not
 attempted" instead of implying 0%.
 
-## Known limitation: the execution tier is dormant
+## ~~Execution tier was dormant~~ (fixed 2026-08-27)
 
-With `SPLIT_SEED = 0`, none of the 4 executable examples land in the held-out
-set, so `code_executes` reports *not attempted*. Re-seeding until the draw
-looks better would be choosing the split after seeing the answers, so the
-seed stays put. `python scripts/check_data.py` prints this coverage on every
-run. The real fix is more executable examples in the dataset, not a different
-seed.
+With `SPLIT_SEED = 0`, none of the 4 executable examples landed in the
+held-out set, so `code_executes` always reported *not attempted*.
+Re-diagnosing turned up why: `split_indices` only ever saw `n` and shuffled
+it as one undifferentiated pool, so whether a runnable reference landed in
+eval was pure chance (~35% of seeds miss all 4, checked across 200 seeds).
+More data alone wouldn't have fixed that -- a bigger pool still gets
+shuffled blindly, so the dormancy would have persisted by luck.
+
+Two other approaches were considered and rejected:
+
+- **Re-seeding until the draw looks good** -- the original note's own
+  objection, and correctly so: it's choosing the split after seeing the
+  outcome.
+- **Adding fixture files** (`sales.csv`, `orders.json`, etc.) so 4 more
+  self-contained-but-file-missing examples become executable. Rejected: the
+  dataset's file paths are deliberately illustrative and don't exist (see
+  `src/eval/scoring.py`'s module docstring) and, since the split is
+  index-based on a fixed `n`, those specific rows sit outside the current
+  held-out set regardless of whether they can execute.
+
+**Fixed by** stratifying the split instead: `splits.split_indices` (and
+`load_split`/`split_dataset`) now accept a `priority` set of row indices,
+partition `range(n)` into `priority` and the rest, and split each pool
+independently under the same seed before merging. This is not a search over
+outcomes -- `is_executable_example` is a static fact about the *reference*
+code, computed once before any split is drawn, never from a generation or a
+score. `scripts/check_data.py` and both notebooks now pass the executable
+reference indices as `priority`, which deterministically holds out line 40
+(one of the 4 executable rows) alongside 9 others:
+
+```
+$ python scripts/check_data.py
+split (seed=0, eval_fraction=0.2): 40 train / 10 eval
+  held out (1-based lines): 1, 2, 9, 14, 17, 26, 30, 38, 40, 41
+  execution tier: 4/50 references run cleanly here, 1 of them held out
+```
+
+Coverage is still thin (1 of 10 eval examples), so more executable examples
+in the dataset remains worth doing -- but the tier is no longer permanently
+dormant while waiting on that.

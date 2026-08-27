@@ -50,21 +50,33 @@ def load_jsonl(path: Path, required_keys: set[str]) -> list[dict]:
 
 
 def report_split(stage2: list[dict]) -> None:
-    """Print the resolved split plus the execution tier's real coverage."""
-    train_idx, eval_idx = split_indices(len(stage2))
+    """Print the resolved split plus the execution tier's real coverage.
+
+    The split is stratified by executability (see `splits.split_indices`'s
+    `priority` parameter) so a proportional share of the runnable references
+    lands in eval whenever there are at least 2 of them -- otherwise the
+    execution tier would depend on an unstratified shuffle happening to draw
+    one in.
+    """
+    runnable: set[int] | None
+    try:
+        from eval.scoring import is_executable_example
+    except ImportError as e:  # scoring has no third-party deps, but be explicit
+        print(f"  (skipped execution-coverage check: {e})")
+        runnable = None
+    else:
+        runnable = {i for i, row in enumerate(stage2) if is_executable_example(row["python_code"])}
+
+    train_idx, eval_idx = split_indices(len(stage2), priority=runnable)
     print(
         f"split (seed={SPLIT_SEED}, eval_fraction={EVAL_FRACTION}): "
         f"{len(train_idx)} train / {len(eval_idx)} eval"
     )
     print("  held out (1-based lines): " + ", ".join(str(i + 1) for i in eval_idx))
 
-    try:
-        from eval.scoring import is_executable_example
-    except ImportError as e:  # scoring has no third-party deps, but be explicit
-        print(f"  (skipped execution-coverage check: {e})")
+    if runnable is None:
         return
 
-    runnable = {i for i, row in enumerate(stage2) if is_executable_example(row["python_code"])}
     in_eval = sorted(runnable & set(eval_idx))
     print(
         f"  execution tier: {len(runnable)}/{len(stage2)} references run cleanly here, "

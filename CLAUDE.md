@@ -69,6 +69,21 @@ record of every prompt across all of them.
 - `docs/prompts.txt` must never be gitignored — it is tracked in version
   control so the prompt history travels with the repo across devices.
 
+## Changelog
+
+Every change to code, notebooks, or docs that comes out of a prompt/session
+must get an entry in `CHANGELOG.md`, appended before or as the work is done —
+the same standing convention as prompt logging above.
+
+- Each entry must state the **reasoning** for the change — the problem,
+  error, or request that prompted it — not just a description of the diff.
+  "Fixed `LoraConfig` missing `modules_to_save`" is not enough on its own;
+  say what broke or was asked for and why this was the fix.
+- Group entries by date, newest first, matching `context.md`'s convention.
+- Append, never overwrite or edit past entries.
+- `CHANGELOG.md` must never be gitignored, for the same reason as
+  `docs/prompts.txt`.
+
 ## Status
 
 Early scaffolding — dataset design and base model selection are being
