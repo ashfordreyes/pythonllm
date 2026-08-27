@@ -13,6 +13,50 @@ top. Periodically fold anything durable into `CLAUDE.md` and prune this file.
 
 ---
 
+## 2026-08-27 — 6GB deployment target written down (`docs/mega_plan.md`)
+
+A research session on base-model selection surfaced that the project's actual
+constraint — the whole pipeline running on an RTX 2060, 6GB VRAM — was
+nowhere in the repo. `docs/mega_plan.md` now holds it, phased P/A/B/C/D/E/F.
+The parts that change how current work should be sequenced:
+
+- **Phase A reframes the format question.** The `<PLAN>/<STEP>` DSL is a
+  *rendering* of the schema, not the schema. Keeping `VERBS` + the ordered
+  step list canonical and making the wire format a flag lets DSL vs
+  Python-comment output be measured rather than argued, and leaves
+  `validate_plan`, `score_plan`, `classify_plan_error` and
+  `scripts/check_data.py` working across both.
+- **Dropping the DSL special tokens is load-bearing, not cosmetic.** Comment
+  format needs no tokenizer surgery, which retires the machinery behind three
+  recorded defects (the shrinking `resize_token_embeddings`, the untrained
+  embedding rows, the 4.3GB artifact) *and* is the precondition for the two
+  stages sharing one base with hot-swapped LoRA adapters. Two separate 7B
+  models are ~9.4GB at Q4 and do not fit; one base plus two ~100MB adapters
+  does.
+- **The eval cannot currently settle anything.** `scripts/check_data.py` now
+  reports 3/50 references running cleanly with 1 held out (not the 4/50-and-
+  none-held-out in the entry below: stratification fixed the held-out half,
+  and the count itself is host-dependent). So the execution tier reports a
+  rate over a single example, and plan formats would be compared on n=10.
+  Phase C
+  (expand toward ~100 verified pairs, raise the executable fraction) is a
+  prerequisite for the Colab baseline, not a follow-up to it.
+- **Cheapest decisive experiment, not yet run:** one
+  `Qwen2.5-Coder-7B-Instruct` @ Q4_K_M doing English -> Python directly in the
+  same 5GB. If two stages don't beat it, the architecture isn't earning its
+  complexity.
+
+**Open — blocks Phase F:** the teacher model the session was premised on,
+`projectj/Instinct-Python-Coder-Gemma4-12B-KimiK3`, could not be verified to
+exist (no search hit; huggingface.co blocked by the session's egress proxy).
+Nearest verified equivalent is the `gemma-4-12B-coder-fable5-composer2.5-v1`
+family. Resolve before building on it. Licenses to check at the same time:
+Qwen2.5-Coder-3B is Qwen Research (non-commercial) unlike its siblings, and
+Gemma terms propagate to a student trained on Gemma outputs.
+
+**Open:** nothing in `docs/mega_plan.md` is implemented. Phase A has not
+started; no code, notebook or data file has changed for it.
+
 ## 2026-08-27 — Stage 2 notebook written; `04` section 7 wired up
 
 - **`notebooks/03_stage2_finetune.ipynb` now exists.** Base model is
