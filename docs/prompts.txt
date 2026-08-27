@@ -164,4 +164,8 @@ Can I just not run it and nothing happens? but my model is saved in google drive
 2026-08-27T11:50:45Z [claude-code-terminal] /plan Lets work on the last two problems. They are related so we can do both of them at the same time. Go to /next_fixes and read the notes on the last two problems, but also do your own diagnosing to make sure we don't miss any avenues.
 2026-08-27T12:18:17Z [claude-code-terminal] Go to next_fixes.md and go to the last problem. Read the note and then do some of your own diagnosis to make sure you don't miss anything.
 2026-08-27T12:58:21Z [claude-code-web] Does colab_setup.md include instructions on getting the .ipynb to train the coder model? Once I have the coder model trained is there a way to make it a little more visually pleasing to run in Google Colab? You know how CLI tools have an almost GUI made with ASCII? Could the same thing be done in Colab so that the response and chatting with the Planner & Coder is a nicer experience and if I run a certain cell it would make a small interface beneath it in the cell's shell?
+
 2026-08-27T13:08:50Z [claude-code-web] Lets focus on just the last question. Ignore everything above "You know how CLI tools.." I want to work on one thing at a time.
+
+2026-08-27T13:16:39Z [claude-code-remote]
+Lets plan the creation of the coder training .ipynb. I think I want to use Qwen coder, but I am not sure what exact version/model.
