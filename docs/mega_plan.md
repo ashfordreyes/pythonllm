@@ -18,10 +18,33 @@ Two-stage Planner -> Coder pipeline that runs **entirely on one RTX 2060,
 
 ### The VRAM budget is the whole design
 
-6144 MiB total. What is left after the desktop depends on the host OS, and
-that is now a Fedora 44 question rather than a Windows one — see "Host OS"
-below. Working figures: **~5.3-5.6 GB** with a normal Fedora/Wayland desktop
-up, **~5.9 GB** headless or with the display driven by an iGPU.
+6144 MiB total. What is left after the desktop depends on the host OS and on
+how the machine is used — see "Host OS" below.
+
+**The operating assumption is normal desktop use.** The model runs while the
+machine is being used as a machine: browser open, editor open, whatever else.
+Nothing in this plan may assume a cleared-off GPU before a run. Two
+consequences, and the second is the one that bites:
+
+- **The realistic budget is ~4.8-5.2 GB**, not the ~5.9 GB a headless host
+  would give. A Fedora/Wayland session is ~0.3-0.6 GB, and a
+  hardware-accelerated browser with real tabs open adds ~0.2-0.5 GB on top —
+  more with video playing.
+- **It is not a fixed budget, it varies during the session.** Opening tabs,
+  playing video, plugging in a second monitor, screen sharing: all of it
+  moves the floor under the model *while the model is loaded*. A
+  configuration measured to fit at 5.2 GB will OOM later when the browser
+  grows. So the design target is not "fits against the measured maximum", it
+  is **"fits with enough headroom to absorb the desktop's own variation"**.
+  See the headroom rule below.
+
+**The stages run sequentially, so that budget is per stage, not shared.**
+The Planner produces a plan, the process (or adapter) hands it to the Coder,
+the Coder produces the code. At no point do both sets of weights need to be
+resident. This is the intended design and the rest of the document is written
+around it; see D-2 for what it costs. Under a varying budget this matters
+more, not less — one model resident at a time is a lower peak and more slack
+for the desktop to fluctuate into.
 
 **The stages run sequentially, so that budget is per stage, not shared.**
 The Planner produces a plan, the process (or adapter) hands it to the Coder,
@@ -56,8 +79,21 @@ Consequences that constrain every step below:
 - **Each stage gets the full budget.** This is the main consequence of the
   sequential design and it changes D-3: the params x bit-width point is
   chosen per stage, not once for a shared 5 GB. A 7B @ Q4_K_M Coder and a
-  1.5B @ fp16 Planner is a legal configuration, and so is 7B @ Q5_K_M
-  (~5.4 GB) for the Coder alone if the host is headless.
+  1.5B @ fp16 Planner is a legal configuration. 7B @ Q5_K_M (~5.4 GB) is
+  **not** legal under normal desktop use — it needs the iGPU path (P1b).
+- **The headroom rule.** Weights are not the whole footprint. Budget
+  `weights + KV cache + ~0.4 GB` of llama.cpp CUDA context and compute
+  buffers, then leave **at least 0.5 GB unspent** for the desktop to grow
+  into. KV cache is small on Qwen2.5-7B (GQA: 28 layers x 4 KV heads x 128
+  dim, ~56 KB/token at fp16, so ~115 MB at 2048 ctx) — the 0.4 GB of buffers
+  and the 0.5 GB of slack are the terms people forget.
+- **The current baseline arm is marginal, and this is the finding that
+  matters.** 7B @ Q4_K_M under normal desktop use: 4.7 weights + ~0.12 KV +
+  ~0.4 buffers = **~5.2 GB against a ~4.8-5.2 GB varying budget, with zero
+  headroom.** It may load and run fine, then die when a video starts. Either
+  the iGPU path (P1b) restores the ~0.8 GB that makes it comfortable, or D-3
+  has to come down a size. Do not treat 7B @ Q4 as the safe default it looks
+  like in the table.
 - **The binding resource moves from VRAM to system RAM and disk.** Two GGUFs
   are ~9.4 GB on disk, and the swap is only cheap if both stay in the page
   cache. Budget 16 GB of system RAM as a floor, 32 GB to be comfortable. See
@@ -88,25 +124,40 @@ baseline the first draft assumed, but the size of it depends on how the
 desktop is configured, and one of the differences matters more for
 *measurement* than for capacity.
 
-- **A GNOME/Wayland session on the 2060 costs roughly 0.3-0.6 GB of VRAM**,
-  against 0.6-1.0 GB for a Windows desktop. Call it ~0.3 GB recovered for
-  free, and note that a browser with hardware acceleration on can eat more
-  than the compositor does — the measurement in P1 has to be taken with
-  whatever you actually keep open.
-- **Headless is available, and it is the big win.** Dropping to
-  `multi-user.target` leaves the card at tens of MiB, i.e. ~5.9 GB usable.
-  Since the pipeline's front end is a console UI (`src/ui/`), running the
-  model host headless over SSH or on a spare TTY is not a contrivance.
-- **An iGPU is the same win without the cost.** If the CPU has integrated
-  graphics, set it primary in the BIOS and plug the monitor into the
-  motherboard; the desktop then costs the 2060 nothing and you keep a full
-  session. Prefer this if the hardware allows it.
-- **No WDDM VRAM oversubscription.** Windows will silently spill VRAM to
-  system RAM under pressure, which turns an over-budget configuration into a
-  mysterious 5-10x slowdown instead of an error. The CUDA path on Linux
-  fails loudly with an OOM instead. For a project whose entire method is
-  measuring where the budget breaks, failing loudly is worth more than the
-  0.3 GB.
+Ordered by what they cost *you*, not by how much VRAM they recover. The
+machine is in normal use while the model runs, so an option that requires
+clearing the desktop first is not really available.
+
+- **An iGPU is the only option that changes nothing about how you work, and
+  it is therefore the recommended one.** If the CPU has integrated graphics,
+  set it primary in the BIOS and plug the monitor into the motherboard. The
+  desktop, the browser and the compositor all move off the 2060 permanently,
+  which restores the full ~5.9 GB *and* removes the variability — the model's
+  budget stops depending on how many tabs are open. One-time BIOS change, no
+  ongoing discipline. This is what makes 7B @ Q4_K_M comfortable instead of
+  marginal. Check with `lspci | grep -iE 'vga|3d|display'`.
+- **A GNOME/Wayland session on the 2060 costs roughly 0.3-0.6 GB**, against
+  0.6-1.0 GB for a Windows desktop, and a hardware-accelerated browser adds
+  ~0.2-0.5 GB on top. This is the fallback if there is no iGPU, and it is the
+  case the ~4.8-5.2 GB working budget describes. Disabling browser hardware
+  acceleration recovers a few hundred MB and is the one cheap mitigation that
+  does not change how the machine is used — worth doing, not worth counting
+  on.
+- **Headless recovers the most VRAM and is listed last on purpose.** Dropping
+  to `multi-user.target` leaves the card at tens of MiB (~5.9 GB usable), but
+  it means not using the desktop while the model runs, which contradicts the
+  operating assumption. Useful for *measurement* — reading 3 in P1 is what
+  isolates the desktop's cost — and for a batch job left running. Do not size
+  the deployed configuration against it.
+- **No WDDM VRAM oversubscription — which cuts both ways.** Windows silently
+  spills VRAM to system RAM under pressure, turning an over-budget
+  configuration into a mysterious 5-10x slowdown instead of an error. The
+  CUDA path on Linux fails loudly with an OOM. For measurement that is worth
+  more than the 0.3 GB. But under normal desktop use it is also a risk the
+  Windows setup did not have: if the model takes the card to the edge and the
+  compositor then needs memory it cannot get, you can stutter or lose the
+  session, not just the model. That is the concrete reason the headroom rule
+  above reserves 0.5 GB rather than fitting to the measured maximum.
 - **Setup cost, to expect once:** the NVIDIA driver comes from RPM Fusion
   (`akmod-nvidia` + `xorg-x11-drv-nvidia-cuda`), and with Secure Boot on you
   must sign the kernel module and enroll the key (MOK) or the driver will not
@@ -197,30 +248,49 @@ past it is committing to unmeasured assumptions.
 
 ## Phase P — Prerequisites
 
-### P1. Measure the real free VRAM on the 2060, under Fedora
-Every budget in this document is an estimate until these numbers exist. Take
-**three** readings with `nvidia-smi --query-gpu=memory.used,memory.total
---format=csv`, because the gap between them is what decides whether the
-headless/iGPU work in P1b is worth doing:
+### P1. Measure the desktop's VRAM **high-water mark**, not its minimum
+Every budget in this document is an estimate until these numbers exist. The
+number that matters is the worst realistic case, because the model has to
+survive it while already loaded — a one-off idle reading will size the
+deployment too big and it will OOM later.
 
-1. Full desktop, with whatever you normally keep open (browser included —
-   hardware-accelerated Firefox can cost more than GNOME Shell does).
-2. Desktop with the browser closed.
-3. Headless: `sudo systemctl isolate multi-user.target`, then read it over
-   SSH or on the TTY.
+Sample over a normal working session rather than taking a single reading:
 
-**Done when:** three measured MiB figures are in `context.md`.
+```bash
+nvidia-smi --query-gpu=memory.used --format=csv,noheader -l 5 | tee ~/vram.log
+```
+
+Leave that running for an hour of ordinary use — browser with your usual
+tabs, editor, whatever else, and at some point a video playing full-screen,
+since that is the realistic worst case. Take the **maximum**, not the mean.
+
+Then two reference readings to isolate where it goes:
+
+1. Desktop with the browser closed.
+2. Headless: `sudo systemctl isolate multi-user.target`, read over SSH or on
+   the TTY. This is not a deployment configuration (see "Host OS"); it is how
+   you find out what the desktop is costing you.
+
+**Done when:** the high-water figure, the two reference figures, and the
+resulting budget after the headroom rule are in `context.md`.
 
 ### P1b. Decide how the display is driven
-If the CPU has integrated graphics (`lspci | grep -i vga` will show it), make
-it primary in the BIOS and move the monitor cable to the motherboard — that
-buys reading 3's budget while keeping a full desktop, and it is a one-time
-BIOS change. Otherwise decide between running the model host headless and
-accepting reading 1. Either way, whichever configuration you pick is the one
-every later measurement (D, F4) must be taken under.
+**Check for an iGPU first** — `lspci | grep -iE 'vga|3d|display'`. If there is
+one, making it primary in the BIOS and moving the monitor cable to the
+motherboard is the recommended configuration: it recovers ~0.8 GB *and*
+removes the variability P1 is measuring, for a one-time change and no change
+to how you use the machine. It is also what decides whether 7B @ Q4_K_M is a
+safe arm or a marginal one.
 
-**Done when:** the chosen configuration is recorded in `context.md`, and the
-budget figure used by Phase D/F is the one that matches it.
+If there is no iGPU, the deployment budget is P1's high-water figure minus
+the headroom rule, and D-3 has to be sized against that. Headless is not the
+answer here — the machine is in normal use while the model runs.
+
+Whichever configuration you land on is the one every later measurement (D,
+F4) must be taken under.
+
+**Done when:** the chosen configuration is recorded in `context.md`, along
+with whether an iGPU exists, and the budget figure Phase D/F uses matches it.
 
 ### P2. Resolve the teacher model (D-5)
 Confirm whether `projectj/Instinct-Python-Coder-Gemma4-12B-KimiK3` exists and
@@ -444,14 +514,25 @@ result from one that costs 2x.
 ### D1. Evaluate quantized, not fp16
 Score what ships. An fp16 A100 number does not predict Q4 behavior on a 2060.
 
+Score against the **P1 high-water budget minus the headroom rule**, not
+against 6144 MiB and not against the headless figure. An arm that only fits
+on an idle desktop has not passed.
+
 ### D2. Arms
 Score every arm **on both stages separately**, since the sequential design
 lets the two stages pick different points (D-3).
 
-- `Qwen2.5-Coder-7B-Instruct` @ Q4_K_M (~4.7 GB) — current baseline
-- `Qwen2.5-Coder-7B-Instruct` @ Q5_K_M (~5.4 GB) — only legal headless/iGPU,
-  and only because the stages no longer share the budget. Include it if P1b
-  went that way; drop it if the desktop stays on the 2060.
+- `Qwen2.5-Coder-7B-Instruct` @ Q4_K_M (~4.7 GB) — current baseline, but
+  **marginal without an iGPU**: ~5.2 GB all-in against a ~4.8-5.2 GB varying
+  budget leaves no headroom. Score it either way; only deploy it if P1b gave
+  you the iGPU path.
+- `Qwen2.5-Coder-7B-Instruct` @ Q5_K_M (~5.4 GB) — **iGPU path only.** Include
+  it if P1b went that way; drop it outright otherwise.
+- `Qwen2.5-Coder-3B-Instruct` @ Q4_K_M or Q5_K_M (~2.0-2.3 GB) — the arm that
+  exists specifically because the budget varies. Comfortable headroom under
+  normal desktop use with no BIOS change and no habits to keep. If the
+  quality gap to 7B is small on our task, this is the honest answer for a
+  machine in daily use. (License: Qwen Research, non-commercial — P2.)
 - `Qwen2.5-Coder-3B-Instruct` @ Q8_0 (~3.3 GB) — the "high bits" arm (license, P2)
 - `Qwen2.5-Coder-1.5B-Instruct` @ fp16 (~3.1 GB) — the true high-bits arm
 - a 4B (Gemma 4 4B or similar) @ Q6_K
@@ -546,6 +627,11 @@ Not on Colab, and under the display configuration P1b settled. Record:
   cold number is what a first run after boot actually feels like.
 - End-to-end wall clock for one English task -> final Python, which is the
   only number that answers "will I tolerate this".
+- **A soak test under real use**, not a clean-room run: load the pipeline,
+  then use the machine normally for an hour — tabs, video, whatever you
+  actually do — and confirm it neither OOMs nor drags the desktop down. This
+  is the step that catches a configuration sized against an idle reading, and
+  it is the one that decides whether the chosen arm actually ships.
 
 **Done when:** the full pipeline answers a held-out task on the 2060, within
 the measured VRAM budget, at a latency you will actually tolerate.

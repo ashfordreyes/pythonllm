@@ -10,6 +10,41 @@ transcripts; see those for full detail behind any entry here.
 
 ### Changed
 
+- **`docs/mega_plan.md` — the budget now assumes the machine is in normal use
+  while the model runs, and treats VRAM as varying rather than fixed.** The
+  Fedora revision earlier today quoted ~5.9 GB headless as if that were the
+  operating figure and listed headless/iGPU as ways to "recover" VRAM. That
+  smuggled in an assumption the user does not hold: it implied clearing the
+  desktop before each run. The real case is browser open, editor open,
+  ordinary desktop, so the working budget drops to **~4.8-5.2 GB**. The
+  larger correction is qualitative — that budget *moves during the session*
+  as tabs open and video plays, so a configuration measured to fit will die
+  later under load. Sizing to the measured maximum is the wrong target;
+  sizing with headroom is the right one. Added an explicit headroom rule
+  (weights + KV + ~0.4 GB llama.cpp buffers, then leave >=0.5 GB unspent) and
+  the arithmetic it exposes: **7B @ Q4_K_M is ~5.2 GB all-in against a
+  ~4.8-5.2 GB varying budget — the current baseline arm has zero headroom and
+  is not the safe default the size table makes it look like.** Also noted the
+  flip side of the "Linux fails loudly" advantage recorded earlier: with the
+  desktop on the same card, an over-budget model can starve the compositor,
+  so the risk is the session, not just the run.
+- **`docs/mega_plan.md` — P1 now measures the desktop's high-water mark, and
+  P1b is re-ranked by what each option costs the user.** A single idle
+  `nvidia-smi` reading sizes the deployment too big, because the model has to
+  survive the worst moment while already loaded; P1 now samples over an hour
+  of ordinary use (`-l 5`, take the maximum, include full-screen video) and
+  keeps the browser-closed and headless readings only as references for
+  isolating where the VRAM goes. P1b was reordered: the **iGPU path is now
+  the recommendation** — it is the only option that changes nothing about how
+  the machine is used, and it removes the variability rather than just
+  recovering ~0.8 GB — while headless moved to last and is explicitly marked
+  not-a-deployment-configuration. Phase D follows: D1 scores against the
+  high-water budget minus headroom, 7B @ Q5_K_M is iGPU-path-only, 7B @ Q4_K_M
+  is flagged marginal, a 3B arm was added as the one with real headroom on an
+  unmodified desktop, and F4 gained a one-hour soak test under real use, which
+  is what catches a configuration sized against an idle reading.
+
+
 - **`docs/mega_plan.md` — two premises corrected in review: the stages run
   sequentially, and the host is Fedora 44, not Windows.** The plan as written
   costed the Planner and the Coder as if both had to be VRAM-resident at

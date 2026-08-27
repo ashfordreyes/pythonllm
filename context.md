@@ -13,6 +13,43 @@ top. Periodically fold anything durable into `CLAUDE.md` and prune this file.
 
 ---
 
+## 2026-08-27 — mega_plan review: the budget varies, and 7B @ Q4 is marginal
+
+Correction to the Fedora entry below. That revision quoted ~5.9 GB headless as
+the operating figure and framed headless/iGPU as VRAM to be "recovered" — which
+assumed clearing the desktop before a run. **That assumption is wrong: the
+machine is in normal use while the model runs.**
+
+- **Working budget is ~4.8-5.2 GB**, not ~5.9 GB. Wayland session ~0.3-0.6 GB
+  plus a hardware-accelerated browser at ~0.2-0.5 GB.
+- **The bigger point: it varies during the session.** Tabs, video, a second
+  monitor all move the floor while the model is loaded. Sizing to the measured
+  maximum is the wrong target. New **headroom rule**: weights + KV + ~0.4 GB
+  llama.cpp buffers, then leave >=0.5 GB unspent.
+- **7B @ Q4_K_M is marginal, not the safe default.** ~4.7 weights + ~0.12 KV +
+  ~0.4 buffers = ~5.2 GB against a ~4.8-5.2 GB varying budget. Zero headroom.
+  It will load fine and then die when a video starts.
+- **P1b's iGPU path is now the recommendation, not a third option.** It is the
+  only choice that changes nothing about how the machine is used, and it
+  removes the variability instead of just recovering ~0.8 GB. It is also what
+  decides whether 7B @ Q4 ships. Headless demoted to a measurement tool.
+- **P1 now measures the high-water mark** over an hour of ordinary use
+  (`nvidia-smi ... -l 5`, take the max, include full-screen video), not a
+  single idle reading.
+- **New 3B arm in Phase D** — the one with real headroom on an unmodified
+  desktop. If the quality gap to 7B is small on our task, it is the honest
+  answer for a daily-use machine.
+- **F4 gained a one-hour soak test** under real use, which is what catches a
+  configuration sized against an idle reading.
+- **Noted:** the "Linux fails loudly" advantage cuts both ways here. With the
+  desktop on the same card, an over-budget model can starve the compositor —
+  the risk is the session, not just the run.
+
+**Open — P1/P1b are now the gating measurements** and the iGPU question
+(`lspci | grep -iE 'vga|3d|display'`) is the highest-value single answer in
+the plan: it decides the budget, the variability, and whether the 7B arms are
+live.
+
 ## 2026-08-27 — mega_plan review: sequential stages, Fedora host
 
 First review pass over `docs/mega_plan.md`. Two premises in it were wrong and

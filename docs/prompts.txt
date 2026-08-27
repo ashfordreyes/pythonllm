@@ -184,3 +184,6 @@ Can you make a file in /docs/ called mega_plan.md with individual steps for impl
 
 2026-08-27T18:48:10Z [claude-code-web]
 I want to review mega_plan.md. My first issue: the plan said I can’t run planner and coder at the same time, but I don’t intend to. I want to run Planner, it makes an output as a prompt, that prompt is given to coder, coder outputs final product. I am also using Fedora 44 instead of Windows, potentially less overhead?
+
+2026-08-27T22:24:08Z [claude-code-web]
+One thing, these fixes assume I am going for maximum GPU use reduction before running. But when I use the model, I am just going to be using my computer as normal.
