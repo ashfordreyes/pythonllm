@@ -55,6 +55,153 @@ and Gate 1 needs a GPU session); notebook 03 was not modified to target it —
 per `mega_plan.md`'s own phase boundary, that's downstream of Gate 1/Phase D,
 which only the user can run.
 
+## 2026-08-27 — hardware facts in: no iGPU, and the die name does not match
+
+`lspci` run on the target. Two findings, one settled and one that needs a
+follow-up command.
+
+- **P1b RESOLVED: there is no integrated GPU.** Exactly one display device:
+  `NVIDIA Corporation TU104 [GeForce RTX 2060] (rev a1)`. The iGPU path was
+  the plan's recommendation because it was the only option that removed the
+  desktop's VRAM variability without changing how the machine is used. It does
+  not exist here. So: the desktop stays on the 2060 during every run, the
+  deployment budget is P1's high-water figure minus headroom, and **the 0.5 GB
+  reserve is mandatory, not prudent.** Headless remains a measurement tool
+  only (§0: the machine is in normal use while the model runs).
+- **Consequence: on a 6 GB card, 7B @ Q4_K_M is not deployable.** ~4.7 weights
+  + ~0.12 KV + ~0.4 buffers = ~5.2 GB against a ~4.8-5.2 GB varying budget.
+  Zero headroom, no iGPU to recover it, and §0's tie-breaker says take the
+  headroom. It stays in the bake-off as the quality reference the smaller arms
+  are trying to match. 7B @ Q5_K_M is dropped outright.
+- **NEW P1c — OPEN, and it blocks every budget figure in the plan.** `lspci`
+  names the die **TU104**. That is RTX 2070 SUPER / 2080 / 2080 SUPER silicon;
+  the normal RTX 2060 die is TU106, and TU104 reaches 2060-class boards only
+  as late-run salvage. Either a genuine TU104-salvage 6 GB 2060 (everything
+  stands) or a `pci.ids` mislabel of a possibly **8 GB** card. An 8 GB card
+  moves the working budget to ~6.8-7.2 GB, puts 7B @ Q5_K_M back in range and
+  changes D-3's answer. Settle it with
+  `nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv`.
+  Either way the Turing facts hold: TU104 and TU106 are both sm_75.
+- **P4 partially answered: DRAM-less SN530-class NVMe (PCIe 3.0 x4).** Better
+  than it sounds for D-2's swap fallback — loading is a large sequential read
+  (~2-2.5 GB/s, so a cold 4.7 GB GGUF is ~2-3 s); the DRAM-less penalty lands
+  on random I/O and sustained writes. Conclusion: **the page cache matters more
+  on this hardware**, since RAM keeps swaps off the drive entirely. The RAM
+  figure is still missing and is the part of P4 that gates D-2.
+
+## 2026-08-27 — the goal is offline resilience, and it settles three arguments
+
+The 6GB target's *rationale* was missing from the repo: maximum useful work per
+GB of a small GPU, so that **losing internet does not stop the work**. Written
+into `docs/mega_plan.md` §0 because it decides things the plan was leaving open.
+
+- **No fallback when it matters.** A hosted model is not a backstop for a local
+  one during the outage that removes it. So "usually fits" = breaks exactly
+  when needed.
+- **Reliability outranks peak quality — this is the tie-breaker D-3 needed.**
+  A 3B that always runs beats a 7B that OOMs mid-video. An arm that needs an
+  idle desktop has not passed. Recorded on D-3 so it is not re-argued per arm.
+  Combined with the marginality finding below, this leans against 7B @ Q4
+  unless P1b's iGPU path is available.
+- **Efficiency puts the two-stage architecture on trial.** Two forward passes
+  plus a transition per request, in a budget that would hold one model doing
+  it directly. **G2 is promoted from sanity check to the experiment that
+  decides whether the architecture survives.** A one-stage win retires most of
+  Phase B, Phase E and the D-2 machinery — much cheaper to learn before the
+  fine-tunes than after Phase E. Run it first.
+- **New F5 — offline acceptance test.** "Runs locally" and "works during an
+  outage" are different claims; the phase previously ended at a latency
+  number a networked machine can pass while still depending on the network.
+  F5 disables networking and requires the loop to close: no runtime hub reads
+  (`HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`, local GGUFs), llama.cpp prebuilt,
+  eval harness still scoring, **and the target libraries installed with a
+  wheel cache** — generated code that imports something absent is worthless
+  offline. That last point upgrades C2 from eval hygiene to a product
+  requirement: the library surface the model emits must match what is
+  installed.
+
+## 2026-08-27 — mega_plan review: the budget varies, and 7B @ Q4 is marginal
+
+Correction to the Fedora entry below. That revision quoted ~5.9 GB headless as
+the operating figure and framed headless/iGPU as VRAM to be "recovered" — which
+assumed clearing the desktop before a run. **That assumption is wrong: the
+machine is in normal use while the model runs.**
+
+- **Working budget is ~4.8-5.2 GB**, not ~5.9 GB. Wayland session ~0.3-0.6 GB
+  plus a hardware-accelerated browser at ~0.2-0.5 GB.
+- **The bigger point: it varies during the session.** Tabs, video, a second
+  monitor all move the floor while the model is loaded. Sizing to the measured
+  maximum is the wrong target. New **headroom rule**: weights + KV + ~0.4 GB
+  llama.cpp buffers, then leave >=0.5 GB unspent.
+- **7B @ Q4_K_M is marginal, not the safe default.** ~4.7 weights + ~0.12 KV +
+  ~0.4 buffers = ~5.2 GB against a ~4.8-5.2 GB varying budget. Zero headroom.
+  It will load fine and then die when a video starts.
+- **P1b's iGPU path is now the recommendation, not a third option.** It is the
+  only choice that changes nothing about how the machine is used, and it
+  removes the variability instead of just recovering ~0.8 GB. It is also what
+  decides whether 7B @ Q4 ships. Headless demoted to a measurement tool.
+- **P1 now measures the high-water mark** over an hour of ordinary use
+  (`nvidia-smi ... -l 5`, take the max, include full-screen video), not a
+  single idle reading.
+- **New 3B arm in Phase D** — the one with real headroom on an unmodified
+  desktop. If the quality gap to 7B is small on our task, it is the honest
+  answer for a daily-use machine.
+- **F4 gained a one-hour soak test** under real use, which is what catches a
+  configuration sized against an idle reading.
+- **Noted:** the "Linux fails loudly" advantage cuts both ways here. With the
+  desktop on the same card, an over-budget model can starve the compositor —
+  the risk is the session, not just the run.
+
+**Open — P1/P1b are now the gating measurements** and the iGPU question
+(`lspci | grep -iE 'vga|3d|display'`) is the highest-value single answer in
+the plan: it decides the budget, the variability, and whether the 7B arms are
+live.
+
+## 2026-08-27 — mega_plan review: sequential stages, Fedora host
+
+First review pass over `docs/mega_plan.md`. Two premises in it were wrong and
+both change what the later phases measure.
+
+- **The stages run sequentially. They never co-reside.** Planner emits a plan,
+  the plan goes to the Coder as a prompt, the Coder emits the code. The plan
+  had costed both models as simultaneously VRAM-resident, which made "two 7B
+  models are ~9.4GB at Q4 and do not fit" a wall. It is not one — the pipeline
+  needs one ~5GB slot reused twice per request.
+- **Consequence 1 — the budget is per stage.** D-3 (params vs bit-width) is
+  now two decisions and they may differ. A 1.5B Planner with a full-budget
+  Coder is legal; so is 7B @ Q5_K_M (~5.4GB) for the Coder alone.
+- **Consequence 2 — D-2 is reframed.** Not "does it fit" but "what does the
+  handoff cost". Shared base + hot-swapped LoRA adapters is milliseconds and
+  preferred; a `llama-swap`-style process swap is the fallback, and it is
+  cheaper than the plan claimed — ~1-3s page-cached, not 5-20s, because the
+  copy is PCIe-bound rather than a disk read. That the fallback works is what
+  keeps model choice free: do not pick a shared base only to avoid the swap.
+- **Consequence 3 — system RAM becomes the binding resource** if the swap
+  route wins, since it is only cheap while both GGUFs stay in the page cache.
+  New step P4 records RAM/disk/disk-type. 16GB floor, 32GB comfortable.
+- **Unchanged:** no 12B fits (7.3GB at Q4 vs ~5.9GB even headless), so
+  distillation remains the only path.
+- **The host is Fedora 44, not Windows.** Budget figures revised to
+  ~5.3-5.6GB with a GNOME/Wayland desktop on the card and ~5.9GB headless or
+  with the display on an iGPU. P1 now takes three readings instead of one and
+  new P1b picks the display configuration, because every later measurement has
+  to be taken under whichever one is chosen. Secondary Linux wins recorded: no
+  WDDM VRAM oversubscription (over-budget configs OOM loudly instead of
+  silently spilling at 5-10x latency), and an easier llama.cpp CUDA build.
+  Setup cost: RPM Fusion `akmod-nvidia`, plus MOK enrollment if Secure Boot is
+  on.
+- **Corrected fact:** the sm_80 FlashAttention requirement is about the
+  `flash-attn` PyTorch package. llama.cpp's `--flash-attn` is a separate
+  implementation expected to work on Turing — worth confirming on the card,
+  since it affects KV-cache size.
+
+**Open — for P1/P1b/P4, nobody but the user can answer:** measured free VRAM
+in all three display configurations; whether the CPU has an iGPU; system RAM,
+free disk and disk type.
+
+**Open — the review is not finished.** This pass covered §0, D-2, D-3, P1, P4,
+G2, D2/D3 and F4. Phases A-C, E and F have not been reviewed.
+
 ## 2026-08-27 — 6GB deployment target written down (`docs/mega_plan.md`)
 
 A research session on base-model selection surfaced that the project's actual
@@ -72,9 +219,11 @@ The parts that change how current work should be sequenced:
   format needs no tokenizer surgery, which retires the machinery behind three
   recorded defects (the shrinking `resize_token_embeddings`, the untrained
   embedding rows, the 4.3GB artifact) *and* is the precondition for the two
-  stages sharing one base with hot-swapped LoRA adapters. Two separate 7B
-  models are ~9.4GB at Q4 and do not fit; one base plus two ~100MB adapters
-  does.
+  stages sharing one base with hot-swapped LoRA adapters. **Superseded in part
+  by the review entry above:** the stages run sequentially and never
+  co-reside, so the shared base is a latency optimization, not a fit
+  requirement. Dropping the special tokens is still load-bearing for the three
+  defects, and still what unblocks the adapter route.
 - **The eval cannot currently settle anything.** `scripts/check_data.py` now
   reports 3/50 references running cleanly with 1 held out (not the 4/50-and-
   none-held-out in the entry below: stratification fixed the held-out half,

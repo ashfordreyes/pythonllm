@@ -182,6 +182,19 @@ Before writing a plan, can all of this effectively be one plan that Sonnet 5 wor
 2026-08-27T18:39:42Z [claude-code-remote]
 Can you make a file in /docs/ called mega_plan.md with individual steps for implementing my goal?
 
+2026-08-27T18:48:10Z [claude-code-web]
+I want to review mega_plan.md. My first issue: the plan said I can’t run planner and coder at the same time, but I don’t intend to. I want to run Planner, it makes an output as a prompt, that prompt is given to coder, coder outputs final product. I am also using Fedora 44 instead of Windows, potentially less overhead?
+
+2026-08-27T22:24:08Z [claude-code-web]
+One thing, these fixes assume I am going for maximum GPU use reduction before running. But when I use the model, I am just going to be using my computer as normal.
+
+2026-08-27T22:27:08Z [claude-code-web]
+My rationale is that I am looking for maximum efficiency on a small GPU, that way even when I lose internet I can keep working.
+
+2026-08-27T22:31:54Z [claude-code-web]
+The lspci command returned: non volatile memory controller: sandisk corp sandisk ultra 3d / wd pc sn530, ix sn530, blue sn550 nvme ssd (dram-less) (rev 01)
+vga compatible controller: nvidia corporation tu104 [geforce rtx 2060] (rev a1)
+
 2026-08-27T23:58:53Z [claude-code-terminal]
 Is there a way for me to somehow track context for the model? Every time I navigate away from the localhost server it resets. I know the model is small, but what improvements could be made to make it agentic? I want to fine tune this model to be distilled like it already is, for python ONLY, that is instructions in english to python code. Because it is so small I can make it higher bits I am sure, and I can probably improve it somehow
 
