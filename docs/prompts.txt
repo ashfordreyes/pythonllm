@@ -206,3 +206,6 @@ I added the notebook to the repo, its called 03_stage2_finetune.ipynb, it was bu
 2026-08-28T00:12:31Z [claude-code-terminal] /plan How far are we in creating a harness to make the small model agentic?
 2026-08-28T00:12:31Z [claude-code-terminal] So what do I need to do to give the model agentic capability? I read somewhere I might want an interpreter because the model might not know when its own code is good. Should I make it agentic first, how? Then after once ive tested add an interpreter only if needed?
 2026-08-28T00:12:31Z [claude-code-terminal] Yes, add it as a new phase in mega_plan.md and review mega_plan.md for anything that is now out of date and needs to be updated, replaced, or removed. Make sure to note everything and WHY in changelog
+
+2026-08-28T00:25:19Z [claude-code-terminal]
+Reconcile the github issues and save as much as possible while not breaking anything, then add to changelog what you did and why

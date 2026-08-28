@@ -8,6 +8,40 @@ transcripts; see those for full detail behind any entry here.
 
 ## 2026-08-28
 
+### Fixed
+
+- **Merged local `main` with `origin/main`, resolving a branch divergence
+  the user surfaced as "reconcile the github issues."** There were in fact
+  zero GitHub Issues in this repo (confirmed via `gh api
+  repos/ashfordreyes/pythonllm/issues` — empty), but a `git pull` the user
+  had run locally failed with "divergent branches": the local `Refresh`
+  commit and origin's already-merged PR #7 (`docs: correct two premises in
+  mega_plan`, `... budget for a machine in normal use`, `... record offline
+  resilience`, `... resolve P1b/add P1c`) had each independently edited
+  `CHANGELOG.md`, `context.md`, `docs/mega_plan.md`, and
+  `docs/prompts.txt` since their common ancestor. Asked the user to confirm
+  this was the real request before merging, since it meant combining two
+  branches of doc history rather than triaging tracker items.
+
+  `git merge origin/main` auto-merged `CHANGELOG.md` and
+  `docs/mega_plan.md` cleanly — the two sides had touched non-overlapping
+  sections (local added Phase G/D-6 and the `next_fixes.md` intro fix;
+  origin added P1b/P1c, the Fedora host correction, the offline-resilience
+  rationale, and the varying-VRAM-budget finding). `context.md` and
+  `docs/prompts.txt` had real textual conflicts — both sides inserted a new
+  dated block at the same location. Resolved both by chronological order,
+  using `docs/prompts.txt`'s own timestamps as ground truth rather than
+  guessing from commit order: the local side's `h0ney-badger`/`PLAN.md`
+  entry stems from a 23:58:53Z prompt, later than every origin-side entry
+  (the latest of which, the `lspci` hardware-facts entry, stems from a
+  22:31:54Z prompt) — so the local entry stayed on top and origin's four
+  entries followed it, preserving both threads of work with nothing
+  dropped or overwritten. Verified afterward: no leftover `<<<<<<<`
+  markers anywhere, dates in `CHANGELOG.md` still strictly newest-first
+  with no duplicates, `docs/PLAN.md` (local-only, new file) still present,
+  and the source files under `src/` — untouched by either side — still
+  parse cleanly.
+
 ### Added
 
 - **`docs/mega_plan.md` — new Phase G ("Agentic execution loop
