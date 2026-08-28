@@ -181,3 +181,15 @@ Before writing a plan, can all of this effectively be one plan that Sonnet 5 wor
 
 2026-08-27T18:39:42Z [claude-code-remote]
 Can you make a file in /docs/ called mega_plan.md with individual steps for implementing my goal?
+
+2026-08-27T23:58:53Z [claude-code-terminal]
+Is there a way for me to somehow track context for the model? Every time I navigate away from the localhost server it resets. I know the model is small, but what improvements could be made to make it agentic? I want to fine tune this model to be distilled like it already is, for python ONLY, that is instructions in english to python code. Because it is so small I can make it higher bits I am sure, and I can probably improve it somehow
+
+2026-08-27T23:58:53Z [claude-code-terminal]
+How much of this can you change in the codebase right now, and how much do I have to do? I have a fine-tuning colab notebook already that I can add to the repo and you can check if it works for you
+
+2026-08-27T23:58:53Z [claude-code-terminal]
+I added the notebook to the repo, its called 03_stage2_finetune.ipynb, it was built for this same project but a different repo, this 1.5b model I found came from a literature review and the other repo doesnt have it yet. the project being making a really efficient model only for python coding. write a plan to a file called PLAN.md with what I need to do, with clear instructions with lots of detail, and you implement the local changes you can make
+2026-08-28T00:12:31Z [claude-code-terminal] /plan How far are we in creating a harness to make the small model agentic?
+2026-08-28T00:12:31Z [claude-code-terminal] So what do I need to do to give the model agentic capability? I read somewhere I might want an interpreter because the model might not know when its own code is good. Should I make it agentic first, how? Then after once ive tested add an interpreter only if needed?
+2026-08-28T00:12:31Z [claude-code-terminal] Yes, add it as a new phase in mega_plan.md and review mega_plan.md for anything that is now out of date and needs to be updated, replaced, or removed. Make sure to note everything and WHY in changelog

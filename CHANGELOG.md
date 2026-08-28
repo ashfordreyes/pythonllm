@@ -6,9 +6,92 @@ in `CLAUDE.md`. Newest first, grouped by date. Reconstructed on 2026-08-27
 from `git log`, `docs/prompts.txt`, `context.md`, and local session
 transcripts; see those for full detail behind any entry here.
 
+## 2026-08-28
+
+### Added
+
+- **`docs/mega_plan.md` — new Phase G ("Agentic execution loop
+  (interpreter-in-the-loop)") and decision item D-6.** The user asked how
+  far along an "agentic" harness for the small model was, then — after
+  clarifying that "agent" (the orchestration loop) and "model" (a component
+  it calls) are separate concerns, the way Claude Code itself is structured
+  — asked what it would actually take to give the model agentic capability,
+  having read that an interpreter might be needed because a small model
+  can't reliably judge its own code's correctness. Checking the repo found
+  nothing built: "agentic" appeared exactly once anywhere, in this file's
+  own 2026-08-27 "Discussed, not committed" entry, as an idea raised and
+  explicitly deferred in favor of keeping the existing 50-example v1.
+
+  The user then asked to make this an official phase and gave direct
+  sequencing guidance to record: build the execution-feedback loop against
+  the untuned model already available (`h0ney-badger` on Ollama, per
+  `docs/PLAN.md`) *before* investing in any tool-use fine-tuning — the same
+  "test before fine-tune" principle `mega_plan.md`'s Gate 1 already applies
+  to the Planner/Coder split. Phase G (G1-G5) captures that: extend
+  `src/eval/harness.py`'s `run_and_check` to capture stdout/stderr and run
+  model-generated code through a real sandbox instead of bare `exec()` (G1);
+  define a plain-text tool-call convention rather than a JSON schema, since
+  small non-tool-tuned instruct models follow the former far more reliably
+  (G2); build the call-execute-feedback loop itself (G3); test it against
+  the untuned model with no training spend (G4); only then decide whether
+  fine-tuning for tool use is actually needed, based on what G4 shows (G5).
+  Added as D-6 in the open-decisions list and as a new row in the "Phases
+  at a glance" table, positioned so it has no phase dependency and can run
+  in parallel with Phase A/B/C — it tests the loop mechanism itself, not
+  any particular base model choice.
+
+- **`docs/mega_plan.md` — fixed a stale reference to `docs/next_fixes.md`.**
+  While reviewing the whole document for anything else out of date (per the
+  same request that added Phase G), found the intro still described
+  `next_fixes.md` as "(open defects)." Rereading that file showed every
+  item in it — the DSL token embedding bug, the oversized adapter artifact,
+  the missing eval split, the missing plotting, the dormant execution
+  tier — is now marked fixed as of 2026-08-27. Updated the intro to
+  describe it as a historical defect log kept for diagnosis detail, not an
+  open list, so a future reader doesn't go looking for defects that no
+  longer exist. The rest of the document (Phases A-F, D-1 through D-5) was
+  checked against `context.md` and found still accurate; no other stale
+  content was found.
+
 ## 2026-08-27
 
 ### Added
+
+- **`docs/PLAN.md`, plus `h0ney-badger/qwen2.5-coder-1.5b-python-distill`
+  recorded as a new D2/D-5 candidate in `context.md` and `docs/mega_plan.md`.**
+  The user already had this 1.5B GGUF model running locally on Ollama (found
+  via literature review, not present in the repo this project's Stage 2
+  notebook was originally written for) and asked for "a plan to a file
+  called PLAN.md with what I need to do, with clear instructions and lots
+  of detail," plus whatever local changes could be made without a GPU.
+
+  Verified the model's actual claims before writing anything down, per the
+  standing lesson in `context.md` from an earlier session's unverifiable
+  teacher-model reference: confirmed base (`Qwen2.5-Coder-1.5B-Instruct`),
+  teacher (`Qwen2.5-Coder-14B-Instruct`, Apache-2.0), and training recipe
+  (execution-filtered distillation, ~566 samples, QLoRA r=16), and flagged
+  the card's 81.5% pass@1 figure as unverified rather than repeating it as
+  fact. Critically, the model's HF repo publishes only a pre-quantized
+  `Q4_K_M.gguf` — no fp16 checkpoint or standalone LoRA adapter — which
+  means it cannot be loaded into `transformers`/PEFT for further
+  fine-tuning; any continued training has to start from the stock
+  `Qwen2.5-Coder-1.5B-Instruct` base instead, not from this artifact.
+
+  Added the model to `docs/mega_plan.md` as a zero-cost D2 bake-off arm and
+  a candidate G2 single-stage baseline, and added `Qwen2.5-Coder-14B-Instruct`
+  as a second, verified D-5 teacher option alongside the unresolved Gemma
+  one, since it sidesteps both the Gemma-license-propagation question and
+  the earlier unverifiable-repo problem.
+
+  Deliberately did not edit `notebooks/03_stage2_finetune.ipynb` or any
+  data/eval code in this pass. `mega_plan.md` already draws a hard boundary
+  between CPU-verifiable Phases A/B and everything from Gate 1 onward,
+  which needs a GPU and is explicitly gated on the user; touching the
+  notebook now would mean editing it again once Phase A settles the
+  Coder-stage input format (D-1), which is still open. `docs/PLAN.md`
+  spells out both fine-tuning paths (use the GGUF as-is vs. fine-tune the
+  stock base) and defers the notebook edit to the user, with the sequencing
+  tradeoff stated explicitly rather than decided silently.
 
 - **`docs/mega_plan.md` — the first document that states the deployment
   target end to end.** Written out of a research/critique session on whether

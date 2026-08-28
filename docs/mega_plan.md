@@ -4,9 +4,11 @@ Working plan for the current research phase. Written 2026-08-27 out of a
 research/critique session; supersedes nothing, but it is the first document
 that states the **end-to-end deployment target** rather than the next fix.
 
-Read alongside `context.md` (current state) and `docs/next_fixes.md` (open
-defects). When a step here is done, record *why* it landed the way it did in
-`CHANGELOG.md`, per the convention in `CLAUDE.md`.
+Read alongside `context.md` (current state) and `docs/next_fixes.md`
+(historical defect log — every item there was closed as of 2026-08-27; kept
+for the diagnosis detail, not as an open list). When a step here is done,
+record *why* it landed the way it did in `CHANGELOG.md`, per the convention
+in `CLAUDE.md`.
 
 ---
 
@@ -86,7 +88,21 @@ implementation step quietly settle one.
   blocked by the session's egress proxy). The nearest verified thing is the
   `gemma-4-12B-coder-fable5-composer2.5-v1` family — Gemma 4 12B-it fine-tuned
   on execution-verified Python, 256K context. Resolve in step P2 before
-  building on it.
+  building on it. A second, verified candidate surfaced 2026-08-27:
+  `Qwen2.5-Coder-14B-Instruct`, the teacher behind
+  `h0ney-badger/qwen2.5-coder-1.5b-python-distill` (D2) — same family as the
+  student, Apache-2.0, sidesteps the Gemma-terms and unverified-repo problems
+  entirely. Worth weighing against the Gemma option in P2 rather than
+  defaulting to it, since a same-family teacher may cap achievable quality
+  lower than a larger, differently-trained one.
+- **D-6 — Does the pipeline need execution feedback (an interpreter tool)
+  to be trustworthy?** Raised in conversation 2026-08-27, then again
+  2026-08-28. A small model can't reliably judge its own code's correctness
+  from static reasoning alone the way a much larger model sometimes can, so
+  the working assumption is yes — but whether the *specific* untuned model
+  already in hand (§D2) can actually follow a tool-call convention and use
+  the feedback it's given is untested. Decided by step G4, which needs no
+  GPU and can run any time.
 
 ---
 
@@ -98,6 +114,7 @@ implementation step quietly settle one.
 | A | Format infrastructure | agent (CPU) | - |
 | B | Notebook updates | agent (CPU) | A |
 | C | Eval capacity | user + agent | A |
+| G | Agentic execution loop (interpreter) | agent + user (Ollama) | - |
 | Gate 1 | First Colab baseline | user | A, B |
 | D | Base model bake-off | user | C, Gate 1 |
 | E | Reasoning traces | user + agent | D |
@@ -328,6 +345,13 @@ Score what ships. An fp16 A100 number does not predict Q4 behavior on a 2060.
 - `Qwen2.5-Coder-7B-Instruct` @ Q4_K_M (~4.7 GB) — current baseline
 - `Qwen2.5-Coder-3B-Instruct` @ Q8_0 (~3.3 GB) — the "high bits" arm (license, P2)
 - `Qwen2.5-Coder-1.5B-Instruct` @ fp16 (~3.1 GB) — the true high-bits arm
+- `h0ney-badger/qwen2.5-coder-1.5b-python-distill` @ Q4_K_M (~0.94 GB) —
+  already-published Python-only distill of the same 1.5B base (teacher:
+  `Qwen2.5-Coder-14B-Instruct`, Apache-2.0 throughout); free to add, no
+  training required. See `context.md` 2026-08-27 for verified details and
+  `docs/PLAN.md` for how to run it. Doubles as a candidate for **G2**
+  (single-stage, plain-instruction baseline), since it wasn't trained on this
+  project's DSL/pseudocode format.
 - a 4B (Gemma 4 4B or similar) @ Q6_K
 - the 12B teacher, unquantized — as a **ceiling**, not a candidate
 
@@ -405,6 +429,91 @@ tok/s for both stages and the adapter-swap latency if D-2 went that way.
 
 **Done when:** the full pipeline answers a held-out task on the 2060, within
 the measured VRAM budget, at a latency you will actually tolerate.
+
+---
+
+## Phase G — Agentic execution loop (interpreter-in-the-loop)
+
+Raised in conversation 2026-08-27 and explicitly deferred — see
+`CHANGELOG.md`'s "Discussed, not committed" entry ("whether the target 7B
+models can be made agentic the way Sonnet/Opus are... settled on keeping the
+existing 50 pairs as a working v1 rather than growing the set further"). No
+harness or loop exists anywhere in the repo. Picked back up 2026-08-28.
+
+**What "agentic" means here, specifically:** an execution-feedback loop, not
+general tool use. The interpreter *is* the agentic capability for a coding
+model — a loop with no execution tool is just a longer chat, and it doesn't
+address the actual problem (the model can't tell if its own code is good).
+Grounding the model in real `stdout`/`stderr`/tracebacks compensates for
+exactly the self-assessment weakness a small model has, which is also why
+this phase is not deferred behind Phase D/E/F: a model too small to reason
+its way to correct code is the *reason* to build the feedback loop, not a
+reason to wait for a bigger one.
+
+**Blocked by:** nothing. G1-G4 need no GPU and don't depend on which base
+model Phase D eventually picks, or on the D-1 format decision — they test
+the loop mechanism itself against whatever instruct model is already running
+locally (see `docs/PLAN.md` for the `h0ney-badger` Ollama setup). Can run in
+parallel with Phase A/B/C.
+
+### G1. Extend the interpreter tool to capture output, not just pass/fail
+`src/eval/harness.py`'s `run_and_check()` returns `EvalResult(passed, error)`
+— `error` is only a traceback on failure, and nothing is captured on
+success. An agent loop needs the model to see what its code actually
+printed, not only whether it raised. Add `stdout`/`stderr` capture (e.g.
+`contextlib.redirect_stdout`/`redirect_stderr`) to `EvalResult`. Extend the
+existing function rather than writing a second exec runner.
+
+**Also close the sandbox gap before this executes model-generated code.**
+The module's own docstring already flags plain `exec()` as "NOT a security
+sandbox" — an acceptable trade while the only input was hand-authored
+reference/eval code. Once a model is generating what runs inside the loop,
+unreviewed output needs a real boundary: a subprocess with a timeout and
+resource limits at minimum, a container if this ever runs anywhere with
+credentials nearby.
+
+**Done when:** the extended runner returns captured stdout/stderr for both a
+passing and a failing example, and executes model-supplied code through
+something stronger than in-process `exec()`.
+
+### G2. Define a minimal tool-call convention
+A plain text marker the model emits to request execution (e.g. a fenced
+` ```run ` block) — not a JSON function-calling schema. Small, non-tool-
+tuned instruct models follow plain textual conventions far more reliably
+than a structured schema they were never trained to emit.
+
+**Done when:** the convention is written down as a system-prompt fragment,
+and a handful of hand-written example completions parse correctly against it.
+
+### G3. Build the orchestration loop
+New code — nothing in the repo does this today. Call model -> parse for a
+tool call -> execute via G1's interpreter -> append the captured output as
+the next turn's context -> call model again -> repeat until the model emits
+a final-answer marker or an iteration cap is hit.
+
+**Done when:** the loop runs end-to-end against a stub model function (the
+same pattern `src/ui/console.py` uses to stay testable without a real
+model), and correctly terminates on both the final-answer marker and the
+iteration cap.
+
+### G4. Test against the current *untuned* model before training anything
+Same principle Gate 1 already applies to the Planner/Coder split — prompt an
+un-tuned model before spending any fine-tuning effort. Point G3's loop at
+the `h0ney-badger` distill already running locally on Ollama and observe
+whether it follows G2's convention and actually uses the execution feedback
+to fix wrong code, or ignores it, or gets confused by the convention itself.
+This needs no training investment to answer, and it settles D-6.
+
+**Done when:** a small hand-picked set of tasks (reuse a few `english` rows
+from `data/stage1_planner/englishtopseudo.jsonl`) has been run through the
+loop, and the outcome is recorded in `context.md`.
+
+### G5. Decide whether to fine-tune for tool use, based on G4
+Only pursue this if G4 shows the model can't follow the convention or
+ignores the feedback it's given. That would mean building a new kind of
+training data — execution-feedback traces — a separate track from the
+existing Planner/Coder SFT data and from Phase E's reasoning traces, not a
+default next step taken regardless of what G4 shows.
 
 ---
 

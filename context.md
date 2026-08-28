@@ -13,6 +13,48 @@ top. Periodically fold anything durable into `CLAUDE.md` and prune this file.
 
 ---
 
+## 2026-08-27 — Candidate model for D2/D-5: `h0ney-badger/qwen2.5-coder-1.5b-python-distill`
+
+Surfaced by the user's own literature review, outside this repo, then brought
+in here. Verified via the model card and file listing on Hugging Face
+(cannot be taken further than that — no independent eval was run):
+
+- **Base:** `Qwen/Qwen2.5-Coder-1.5B-Instruct`. **Teacher:** `Qwen2.5-Coder-14B-Instruct`
+  — same family as the student, so true logit KD stays available later if this
+  ever becomes the project's own distillation (`docs/mega_plan.md` F1). This
+  also **resolves the license half of D-5** for this candidate: both are
+  Apache-2.0, unlike the Qwen 3B (Research License) or a Gemma-derived
+  teacher (Gemma terms propagate to the student).
+- **Recipe** (per the card): teacher generates Python tasks + solutions +
+  tests, execution-filters, keeps ~566 verified samples; QLoRA via Unsloth
+  (r=16, 3 epochs) on the 1.5B student; merged to fp16; converted to GGUF.
+  This is close to `mega_plan.md` F1's own planned recipe, run already, at
+  small scale, by someone else, on this exact base model.
+- **Only artifact published is `qwen-coder-1.5b-py-Q4_K_M.gguf`** (986 MB) —
+  no fp16/safetensors checkpoint, no standalone LoRA adapter. **This means it
+  cannot be loaded into `transformers`/PEFT to continue fine-tuning it
+  directly** — notebook 03 (or any QLoRA run) would have to start from stock
+  `Qwen/Qwen2.5-Coder-1.5B-Instruct` instead, not from this checkpoint.
+- **Claims 81.5% Python pass@1 "in under 1GB"**, beating the stock 1.5B and
+  reportedly a stock 7B on Python-specific tasks. **Self-reported, unverified
+  here** — same standard as everything else in Phase D/C: treat as a reason
+  to prioritize testing it, not as a result.
+- Card explicitly scopes it "Python only," "not reasoning-heavy," needs a
+  proper chat template and low temperature.
+
+**What this changes in `docs/mega_plan.md`:** added as a D2 bake-off arm
+(it's already quantized and free to try — no training needed to get a first
+read); it is *also* a candidate G2-style single-stage baseline, since it
+takes plain instructions rather than the project's DSL/pseudocode. See
+`docs/PLAN.md` for the concrete next steps this implies — written separately
+from this log entry per the user's request, since it's an actionable
+checklist rather than a decision record.
+
+**Not done:** no eval was run against it (Phase C's held-out set isn't ready
+and Gate 1 needs a GPU session); notebook 03 was not modified to target it —
+per `mega_plan.md`'s own phase boundary, that's downstream of Gate 1/Phase D,
+which only the user can run.
+
 ## 2026-08-27 — 6GB deployment target written down (`docs/mega_plan.md`)
 
 A research session on base-model selection surfaced that the project's actual
